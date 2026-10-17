@@ -7,6 +7,7 @@
 | Соединение с Steam CM с Android | ✅ | `SteamTransportSmokeTest` на эмуляторе Android 16: WebSocket к `cmp1-iad1.steamserver.net:443`, connect+disconnect за 2,7 с |
 | JavaSteam crypto на Android (BouncyCastle) | ✅ | `PlatformConfigurationInstrumentedTest.realBouncyCastleIsRegisteredForJavaSteam` |
 | Получение QR-челленджа (`BeginAuthSessionViaQR`) | ✅ | Ручной прогон debug **и** minified release на эмуляторе: QR отрисован, таймер истечения, Cancel → `AUTH_CANCELLED`; утечек в logcat нет |
+| Одобрение на том же телефоне (передача ссылки в Steam Mobile) | 🟡 | Основание — App Links `s.team` → Steam Mobile (assetlinks.json). Отказ самозванцу и отсутствие приложения проверены на эмуляторе; реальный показ запроса в Steam Mobile — не проверен (нет Steam в эмуляторе) |
 | Подтверждение QR в Steam Mobile → refresh token | 🟡 | Требует телефона владельца и аккаунта. Логика покрыта unit-тестами с fake gateway |
 | Логон по refresh token, восстановление сессии | 🟡 | API подтверждён в исходниках JavaSteam 1.8.0 и используется форком; у нас — unit-тесты |
 | Проверка identity (JWT `sub` == SteamID логона) | 🟡 | Unit-тест `token for another account is rejected` |

@@ -43,6 +43,8 @@ beginAuthSessionViaQR(details{deviceFriendlyName="IdleGamer (<model>)",
                               websiteID="Client"})
    ──► QrAuthSession{challengeUrl, pollingInterval (sec), clientID, requestID}
 UI рисует QR из challengeUrl (локально, zxing). FLAG_SECURE на экране.
+На том же телефоне: challengeUrl → явный ACTION_VIEW в com.valvesoftware.android.steam.community
+(только при подписи Valve; s.team App Links → Steam Mobile, см. AUTHENTICATION.md).
 loop (≤ maxAttempts, ≤ qrLifetime):
     delay(max(interval, 1s))
     pollAuthSessionStatus() ─► null            → продолжаем

@@ -11,7 +11,7 @@
 ## Статус
 
 Версия 0.1.0. Собирается, 95 unit- и 18 instrumented-тестов проходят, получение QR от Steam проверено на
-эмуляторе (debug и release). **Логон, библиотека, presence и отзыв токена ещё не проверены на реальном
+эмуляторе (debug и release). Одобрение на том же телефоне через приложение Steam реализовано, но показ запроса в Steam Mobile не проверен. **Логон, библиотека, presence и отзыв токена ещё не проверены на реальном
 аккаунте** — см. [FEASIBILITY](docs/FEASIBILITY.md) и [TEST_PLAN §5](docs/TEST_PLAN.md).
 
 ## Требования
@@ -42,8 +42,9 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ## Авторизация
 
-1. Sign in with Steam → появится QR (скриншоты экрана в этот момент заблокированы).
-2. Steam Mobile → щит Steam Guard → «Scan a QR code» → подтвердить вход для «IdleGamer (<ваше устройство>)».
+1. Sign in with Steam.
+2. **Steam Mobile на этом же телефоне:** нажмите «Approve in the Steam app» — откроется приложение Steam, подтвердите вход для «IdleGamer (<ваше устройство>)» и вернитесь. Ссылка передаётся только приложению, подписанному Valve.
+   **Steam Mobile на другом устройстве:** там щит Steam Guard → «Scan a QR code» и отсканируйте QR с экрана (скриншоты этого экрана заблокированы).
 3. IdleGamer проверяет, что Steam вошёл именно в аккаунт токена, и только потом сохраняет сессию.
 
 Пароль и коды Steam Guard никогда не вводятся в IdleGamer. Подробно: [AUTHENTICATION](docs/AUTHENTICATION.md).

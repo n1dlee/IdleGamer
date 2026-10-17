@@ -14,6 +14,14 @@
     <!-- Only used when the user opts in to "Keep CPU awake"; always acquired with a timeout. -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!--
+      Android 11+ package visibility: lets IdleGamer check whether the official Steam app is installed and
+      signed by Valve, so the QR challenge can be handed to it on the same phone. Nothing else is queried.
+    -->
+    <queries>
+        <package android:name="com.valvesoftware.android.steam.community" />
+    </queries>
+
     <application
         android:name=".IdleGamerApplication"
         android:allowBackup="false"

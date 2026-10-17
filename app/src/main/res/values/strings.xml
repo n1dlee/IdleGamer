@@ -21,11 +21,19 @@
     <string name="lock_prompt_subtitle">Confirm it is you</string>
 
     <!-- Login -->
-    <string name="login_description">Sign in by scanning a QR code with the official Steam Mobile app. IdleGamer never asks for your password or Steam Guard codes.</string>
+    <string name="login_description">Sign in by approving the request in the official Steam Mobile app: on this phone, or by scanning a QR code from another device. IdleGamer never asks for your password or Steam Guard codes.</string>
     <string name="login_sign_in">Sign in with Steam</string>
     <string name="login_new_code">Get a new code</string>
     <string name="login_initializing">Contacting Steam…</string>
-    <string name="login_scan_instructions">Open the Steam Mobile app → tap the shield (Steam Guard) → \"Scan a QR code\", then approve the sign-in for \"%1$s\".</string>
+    <string name="login_scan_instructions">From another phone or tablet with Steam Mobile: tap the shield (Steam Guard) → \"Scan a QR code\", then approve the sign-in for \"%1$s\".</string>
+    <string name="login_same_device_instructions">Steam Mobile is installed on this phone. Tap below: Steam opens with the sign-in request for \"%1$s\". Approve it there, then come back to IdleGamer.</string>
+    <string name="login_open_steam_app">Approve in the Steam app</string>
+    <string name="login_waiting_for_approval">Waiting for approval… IdleGamer keeps checking while you are in the Steam app.</string>
+    <string name="login_handoff_failed">Could not open the Steam app. Use the QR code from another device, or get a new code and try again.</string>
+    <string name="login_or_other_device">Or approve from another device</string>
+    <string name="login_steam_app_missing">The official Steam app is not installed on this phone. A phone cannot scan a QR code shown on its own screen, so scan it with Steam Mobile on another device.</string>
+    <string name="login_steam_app_untrusted">An app with Steam\'s package name is installed, but its signature does not match Valve\'s published certificate, so IdleGamer will not hand it the sign-in link. Scan the QR code with Steam Mobile on another device.</string>
+    <string name="login_steam_app_cannot_handle">The installed Steam app does not accept sign-in links on this phone. Scan the QR code with Steam Mobile on another device.</string>
     <string name="login_qr_warning">This code signs in whoever approves it. Approve it only because you pressed \"Sign in\" here. Never scan or approve a QR code someone sent you.</string>
     <string name="login_qr_expires">Code expires in %1$s</string>
     <string name="login_authenticating">Approved. Signing in and verifying the account…</string>

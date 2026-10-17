@@ -4,8 +4,8 @@
 
 | Набор | Команда | Где | Результат |
 |---|---|---|---|
-| JVM unit (95 тестов, 14 классов) | `./gradlew :app:testDebugUnitTest` | JDK 21 | **95/95 pass** |
-| Instrumented (18 тестов) | `./gradlew :app:connectedDebugAndroidTest` | эмулятор Android 16 (API 36, x86_64) | **17 pass + 1 skipped (opt-in)**. Примечание: AGP пишет пропуск через `assumeTrue` в XML как `failures=1` с `AssumptionViolatedException`; Gradle считает его пропуском, сборка успешна |
+| JVM unit (98 тестов, 15 классов) | `./gradlew :app:testDebugUnitTest` | JDK 21 | **98/98 pass** |
+| Instrumented (20 тестов) | `./gradlew :app:connectedDebugAndroidTest` | эмулятор Android 16 (API 36, x86_64) | **19 pass + 1 skipped (opt-in)**. Примечание: AGP пишет пропуск через `assumeTrue` в XML как `failures=1` с `AssumptionViolatedException`; Gradle считает его пропуском, сборка успешна |
 | Steam CM transport (opt-in) | `... -Pandroid.testInstrumentationRunnerArguments.steamNetwork=true` | эмулятор + реальный Steam CM | **pass** (connect/disconnect без аккаунта) |
 | Lint | `./gradlew :app:lintDebug` | | 0 errors; предупреждения: OldTargetApi (осознанно), protobuf newer (закреплено), 2× PluralsCandidate |
 | Release (R8) | `./gradlew :app:assembleRelease` | | собран, 9,6 МБ unsigned |
@@ -35,6 +35,9 @@ UI smoke (экран входа, предупреждение, нет `FLAG_SECU
 | M1 | Debug: Sign in → QR от Steam, таймер, Cancel | ✅ `AUTH_INITIATED` → `AUTH_CANCELLED`; скриншот при QR — чёрный (FLAG_SECURE) |
 | M2 | Release (R8, локально подписан debug-ключом только для установки): то же | ✅ QR получен, падений нет |
 | M3 | logcat за M1/M2: `s.team/q`, `eyJ…` | ✅ 0 совпадений |
+| M5 | Экран QR без приложения Steam | ✅ «Steam app is not installed… scan with another device» + QR |
+| M6 | Экран QR с самозванцем (`:testing:impostor-steam-app`: пакет Steam, обработчик `s.team/q`, debug-подпись) | ✅ «signature does not match Valve…», ссылка не передаётся; `SteamAppHandoffInstrumentedTest` проходит в обоих режимах |
+| M7 | Удаление самозванца при открытом экране → возврат | ✅ сообщение обновилось на «not installed» |
 | M4 | Ресурсы release в покое | PSS ≈ 56 МБ, CPU 0 %, сервис не запущен |
 
 ## 3. Ручные проверки, требующие устройства/аккаунта (не выполнены)
@@ -54,6 +57,7 @@ UI smoke (экран входа, предупреждение, нет `FLAG_SECU
 | A11 | Battery restricted | Настройки → Батарея → Ограничено | возможная остановка — `SYSTEM_STOPPED`/`INTERRUPTED` |
 | A12 | Reboot | перезагрузка | ничего не стартует само; запись `INTERRUPTED` |
 | A13 | FGS timeout (тестовый) | `adb shell am compat enable FGS_INTRODUCE_TIME_LIMITS <pkg>` | specialUse не ограничен; onTimeout реализован |
+| A14 | **Вход на одном телефоне**: IdleGamer и Steam Mobile на одном устройстве → Sign in → «Approve in the Steam app» | Steam открывается с запросом входа для «IdleGamer (…)»; после одобрения и возврата — Dashboard. Также: подождать 30–60 с в Steam перед одобрением (заморозка процесса) |
 | P1 | Батарея | `adb shell dumpsys batterystats --reset`, 1 ч сессии, `dumpsys batterystats <pkg>` | зафиксировать |
 
 ## 4. Security-проверки (сводка)
@@ -76,7 +80,7 @@ UI smoke (экран входа, предупреждение, нет `FLAG_SECU
 
 Только **тестовый аккаунт без ценных предметов**. Claude не запрашивает пароль, коды или токены.
 
-1. Read-only: Sign in (QR в Steam Mobile) → Dashboard: имя, «Online». Library → Refresh: игры и playtime совпадают со Steam. Logout → сообщение о revoke. Проверить в Steam список устройств.
+1. Read-only: Sign in (на одном телефоне — кнопка «Approve in the Steam app», A14; со второго устройства — QR) → Dashboard: имя, «Online». Library → Refresh: игры и playtime совпадают со Steam. Logout → сообщение о revoke. Проверить в Steam список устройств.
 2. Перезапуск приложения после входа → сессия восстанавливается без QR.
 3. Только после п.1–2 и прочтения COMPLIANCE.md: одна игра, Start на 10 мин, Stop; через несколько часов «Verify playtime». Записать, изменился ли `playtime_forever`.
 4. Отправить экспорт диагностики (Settings → Export) для разбора, если что-то пошло не так.
