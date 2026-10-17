@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Original artwork: a stylised gamepad, not a Steam/Valve mark. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="@color/launcher_foreground"
+        android:pathData="M38,42h32c7.7,0 14,6.3 14,14v2c0,6.6 -5.4,12 -12,12c-3.6,0 -6.9,-1.6 -9.1,-4.3L60,62H48l-2.9,3.7C42.9,68.4 39.6,70 36,70c-6.6,0 -12,-5.4 -12,-12v-2C24,48.3 30.3,42 38,42z" />
+    <path
+        android:fillColor="@color/launcher_background"
+        android:pathData="M36,50h4v4h4v4h-4v4h-4v-4h-4v-4h4z M68,50a3,3 0,1 1,0 6a3,3 0,1 1,0 -6z M74,56a3,3 0,1 1,0 6a3,3 0,1 1,0 -6z" />
+</vector>
