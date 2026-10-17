@@ -23,7 +23,7 @@
 | Функция | API / библиотека | Подтверждена? | Ограничения |
 |---|---|---|---|
 | Авторизация | `SteamClient.authentication` → `SteamAuthentication` (`steam/authentication/SteamAuthentication.kt`) | **Да, в исходниках** | Требует установленного CM-соединения (`IllegalArgumentException`, если не connected) |
-| QR login | `beginAuthSessionViaQR(AuthSessionDetails)` → `QrAuthSession.challengeUrl`; `pollAuthSessionStatus()` (`AuthSession.kt`) | **Да, в исходниках**; на реальном аккаунте — **требует ручной проверки владельцем** | `pollingWaitForResult()` опрашивает слишком часто (ms vs s), используем свой цикл; QR истекает (`EResult.Expired`/`FileNotFound`), URL может обновляться (`new_challenge_url`) |
+| QR login | `beginAuthSessionViaQR(AuthSessionDetails)` → `QrAuthSession.challengeUrl`; `pollAuthSessionStatus()` (`AuthSession.kt`) | **Да**: `BeginAuthSessionViaQR` проверен на эмуляторе против реального Steam (QR получен); одобрение и выдача токена — **требуют ручной проверки владельцем** | `pollingWaitForResult()` опрашивает слишком часто (ms vs s), используем свой цикл; QR истекает (`EResult.Expired`/`FileNotFound`), URL может обновляться (`new_challenge_url`) |
 | Восстановление сессии | `SteamUser.logOn(LogOnDetails(username, accessToken = refreshToken, shouldRememberPassword = true))` (`handlers/steamuser/LogOnDetails.kt`: «This is actually your refresh token») | **Да, в исходниках** + используется форком | Невалидный токен → `LoggedOnCallback.result` = `InvalidPassword`/`AccessDenied`/`Expired`/`Revoked` → `ReauthenticationRequired` без повторов |
 | Продление токена | `generateAccessTokenForApp(steamID, refreshToken, allowRenewal = true)` → `AccessTokenGenerateResult.refreshToken` (может быть пустым, если Steam не продлил) | **Да, в исходниках** | Steam сам решает, выдавать ли новый refresh token |
 | Получение игр | `SteamUnifiedMessages.createService<Player>().getOwnedGames(CPlayer_GetOwnedGames_Request)` (`rpc/service/Player.kt`) | **Да, в исходниках** + используется форком | Web API key не нужен. Поля: appid, name, playtime_forever (мин.), playtime_2weeks, img_icon_url, rtime_last_played. Список owned ≠ установленные игры |
@@ -34,7 +34,7 @@
 | Logout | `SteamUser.logOff()` (отправляет `ClientLogOff` и вызывает `disconnect()`) | **Да, в исходниках** | Только завершает CM-сессию, токен остаётся валидным |
 | Token revocation | `Authentication.revokeToken(CAuthentication_Token_Revoke_Request{token, revoke_action})` (`rpc/service/Authentication.kt`) | Метод **существует**; что CM принимает его для `client`-токена от этой же сессии — **не подтверждено** | `revokeRefreshToken` требует `token_id` + подпись — недоступно. Результат отзыва показывается пользователю честно; при неудаче — инструкция отзыва вручную |
 
-## 3. Последовательность QR-логина (реализована в `JavaSteamGateway` + `QrLoginCoordinator`)
+## 3. Последовательность QR-логина (`JavaSteamGateway` + `SteamSessionManager.runQrLogin`)
 
 ```
 connect() ──► ConnectedCallback
@@ -71,7 +71,7 @@ logOn(accountName, refreshToken) ──► LoggedOnCallback(OK, clientSteamID)
 * `CryptoHelper` требует настоящий BouncyCastle под именем "BC". `IdleGamerApplication.onCreate()` выполняет
   `Security.removeProvider("BC"); Security.addProvider(BouncyCastleProvider())` **до** первой загрузки классов JavaSteam.
   Провайдер добавляется в конец списка, чтобы не менять выбор по умолчанию для `Cipher.getInstance("AES/GCM/NoPadding")` (нужно для Android Keystore).
-* Транспорт: `ProtocolTypes.WEB_SOCKET` (TLS 443) — проходит через большинство мобильных сетей; TCP оставлен как опция отладки.
+* Транспорт: только `ProtocolTypes.WEB_SOCKET` (TLS 443) — проходит через большинство мобильных сетей; TCP с канальным шифрованием CM не используется. Проверено: `SteamTransportSmokeTest`.
 * Логи JavaSteam включаются только в debug-сборке и только через redacting-listener.
 
 ## 7. Что сознательно НЕ используется

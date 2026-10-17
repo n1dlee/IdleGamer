@@ -46,7 +46,7 @@
 
 ## 5. Сеть
 
-* `ConnectivityManager.registerDefaultNetworkCallback` → `NetworkMonitor` (StateFlow `isOnline`).
+* `ConnectivityManager.registerDefaultNetworkCallback` → `AndroidNetworkMonitor` (StateFlow `isOnline`, только validated-сети).
 * Wi-Fi → LTE: TCP/WebSocket-соединение рвётся (новый IP) → `DisconnectedCallback` → reconnect с backoff (см. SESSION_LIFECYCLE.md).
 * Нет сети: reconnect-цикл **приостанавливается** до появления сети (не жжёт батарею попытками).
 
