@@ -335,7 +335,8 @@ class SteamSessionManager(
                     network.awaitOnline()
                 }
                 val session = establishAndHold(creds)
-                if (shuttingDown) return
+                // Logout/rejection may have completed while we were suspended: never reconnect after that.
+                if (shuttingDown || credentials == null || _auth.value !is AuthState.Authenticated) return
                 if (session.stableMillis >= policy.stableConnectionMillis) attempt = 0
                 val error = session.endedWith
 

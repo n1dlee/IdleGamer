@@ -12,13 +12,13 @@ object Redactor {
         Regex("""eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}""") to { _ -> "[REDACTED_JWT]" },
         // Steam QR challenge URLs (https://s.team/q/<version>/<clientId>).
         Regex("""https?://s\.team/q/\S+""", RegexOption.IGNORE_CASE) to { _ -> "[REDACTED_QR_URL]" },
+        // Bearer headers (before key=value, which would otherwise mask only the word "Bearer").
+        Regex("""(?i)\bBearer\s+[A-Za-z0-9._~+/-]+=*""") to { _ -> "Bearer $MASK" },
         // key=value / key: value pairs for sensitive keys.
         Regex(
             """(?i)\b(refresh_?token|access_?token|token|password|passwd|guard_?data|auth_?code|two_?factor_?code|""" +
                 """steamLoginSecure|sessionid|cookie|authorization|shared_?secret|identity_?secret)\b(\s*[:=]\s*)("[^"]*"|\S+)""",
         ) to { m -> "${m.groupValues[1]}${m.groupValues[2]}$MASK" },
-        // Bearer headers.
-        Regex("""(?i)\bBearer\s+[A-Za-z0-9._~+/-]+=*""") to { _ -> "Bearer $MASK" },
         // Long opaque base64/hex blobs (machine auth, sentry, generic tokens).
         Regex("""\b[A-Za-z0-9+/_-]{48,}={0,2}""") to { _ -> "[REDACTED_BLOB]" },
         // Five-character Steam Guard codes when explicitly labelled.
