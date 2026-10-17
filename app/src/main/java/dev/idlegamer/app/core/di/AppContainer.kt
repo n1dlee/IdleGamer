@@ -14,7 +14,6 @@ import dev.idlegamer.app.core.network.AndroidNetworkMonitor
 import dev.idlegamer.app.core.network.NetworkMonitor
 import dev.idlegamer.app.core.security.FileSecureCredentialStore
 import dev.idlegamer.app.core.security.KeystoreCredentialCipher
-import dev.idlegamer.app.core.steamapp.SteamAppHandoff
 import dev.idlegamer.app.core.time.Clock
 import dev.idlegamer.app.core.time.SystemClocks
 import dev.idlegamer.app.data.local.AppDatabase
@@ -83,8 +82,6 @@ class AppContainer(context: Context) {
 
     /** Shown in the Steam app's approval prompt and in Steam's device list. Honest, not spoofed. */
     val deviceFriendlyName: String = "IdleGamer (${Build.MANUFACTURER} ${Build.MODEL})".take(64)
-
-    val steamAppHandoff = SteamAppHandoff(appContext)
 
     val gameRepository: GameRepository = RoomGameRepository(database.games(), steamGateway, clock)
     val historyRepository: ActivityHistoryRepository = RoomActivityHistoryRepository(database.sessions())

@@ -19,7 +19,7 @@
 |---|---|---|
 | refresh token, account name | `noBackupFilesDir/vault/session.bin` | AES-256-GCM, ключ Keystore |
 | access token | не хранится | — |
-| QR challenge URL | RAM + экран; на том же телефоне — явный intent в приложение Steam | FLAG_SECURE, Redactor; передача только Valve-подписанному пакету (AUTHENTICATION.md) |
+| QR challenge URL | только RAM + экран; в другие приложения не передаётся (системный WindowManager логирует intent) | FLAG_SECURE, Redactor |
 | SteamID64 последнего аккаунта, настройки | DataStore | не секрет |
 | Кэш игр, выбор, история сессий, журнал | Room | не секрет; журнал проходит Redactor |
 

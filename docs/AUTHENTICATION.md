@@ -2,23 +2,15 @@
 
 ## Метод: Steam QR login (единственный)
 
-### Одобрение на том же телефоне
+### Одобрение на том же телефоне — невозможно (проверено на устройстве)
 
-Телефон не может отсканировать QR со своего же экрана, а Steam Mobile обычно стоит на том же телефоне, что и
-IdleGamer. Поэтому основной путь на одном устройстве — **передать ссылку из QR в официальное приложение Steam**:
-
-* Основание: `https://s.team/.well-known/assetlinks.json` (проверено 2026-10-17) объявляет Android App Links домена
-  `s.team` (на нём живут QR-ссылки входа) для пакета `com.valvesoftware.android.steam.community` с отпечатками
-  сертификатов Valve `5DFF6B05…FBDA45` и `FAC61745…033B9C`.
-* `SteamAppHandoff` отдаёт ссылку **только** если: пакет установлен; он подписан одним из этих сертификатов
-  (`PackageManager.hasSigningCertificate`, API 28+, с учётом ротации ключей; на 26–27 — все подписи должны совпасть);
-  для явного intent (`setPackage`) находится activity; ссылка имеет вид `https://s.team/q/<n>/<id>`.
-* Intent явный — без chooser, никакое другое приложение ссылку не получит. В буфер обмена и share sheet она не попадает.
-* Пока пользователь в приложении Steam, IdleGamer продолжает опрос; после возврата вход завершается.
-* Иначе экран объясняет причину (не установлен / подпись не Valve / не принимает ссылки) и предлагает QR для второго устройства.
-
-**Не проверено:** что Steam Mobile действительно показывает запрос подтверждения по такой ссылке (в эмуляторе нет
-Steam). Проверка — TEST_PLAN A14.
+Телефон не может отсканировать QR со своего экрана. Была реализована передача QR-ссылки в официальное приложение
+Steam явным intent (основание: App Links `s.team` → `com.valvesoftware.android.steam.community` в
+`s.team/.well-known/assetlinks.json`, проверка подписи Valve). Результат на Samsung SM-S938B, Android 17,
+2026-10-17: подпись распознана, Steam Mobile открылся, но **запроса на одобрение нет** — Steam Guard показывает
+«For security purposes, please scan the Steam QR code again». Valve принимает QR-вход только со сканера камеры
+(защита от фишинга). Кроме того, системный WindowManager Samsung записал полный intent со ссылкой в logcat.
+Функция удалена. QR-вход требует второго устройства с Steam Mobile.
 
 Пароль и коды Steam Guard **никогда** не вводятся в IdleGamer и не хранятся. Подтверждение выполняется в
 официальном приложении Steam Mobile — Steam Guard остаётся частью официальной процедуры.
@@ -29,8 +21,8 @@ Steam). Проверка — TEST_PLAN A14.
 2. `gateway.connect()` (CM по WebSocket/TLS).
 3. `beginAuthSessionViaQR(deviceFriendlyName = "IdleGamer (<производитель> <модель>)", platformType = SteamClient, persistentSession = true)`.
    Имя устройства честное — его видно в запросе подтверждения и в списке устройств Steam.
-4. `WaitingForApproval(challengeUrl, expiresAt)`: кнопка «Approve in the Steam app» (если доступна, см. выше) и QR для
-   второго устройства, рисуется локально (ZXing), окно `FLAG_SECURE`, показывается предупреждение о чувствительности QR. Steam может прислать новый URL → `QrChallengeRefreshed`.
+4. `WaitingForApproval(challengeUrl, expiresAt)`: QR для второго устройства (с пояснением, что на этом же телефоне
+   одобрить нельзя), рисуется локально (ZXing), окно `FLAG_SECURE`, показывается предупреждение о чувствительности QR. Steam может прислать новый URL → `QrChallengeRefreshed`.
 5. Опрос `pollAuthSessionStatus()` **собственным циклом**: пауза = интервал из ответа Steam (секунды, ≥ 1 с),
    не более `lifetime / interval + 1` опросов, общий срок жизни 5 минут.
    `pollingWaitForResult()` JavaSteam не используется (ошибка мс/с, RESEARCH.md §2.3).

@@ -23,5 +23,3 @@ dependencyResolutionManagement {
 rootProject.name = "IdleGamer"
 include(":app")
 
-// Test fixture used by SteamAppHandoffInstrumentedTest (see its build file).
-include(":testing:impostor-steam-app")

@@ -33,7 +33,6 @@
 | Категория | Угроза | Нарушитель | Мера | Остаточный риск |
 |---|---|---|---|---|
 | **S**poofing | Поддельный QR (фишинг-страница показывает свой QR, пользователь подтверждает вход злоумышленника) | T5/соц. инженерия | QR генерируется только из `challengeUrl`, полученного по CM; приложение не принимает QR из внешних источников (нет deep links, нет intent-filter для URL); предупреждение «подтверждайте только если сами нажали Sign in в IdleGamer» | Низкий |
-| S | Поддельное «приложение Steam» (тот же package name, sideload) перехватывает ссылку входа при передаче на том же устройстве | T1 | Явный intent только в `com.valvesoftware.android.steam.community` и только при совпадении сертификата с опубликованными в `s.team/.well-known/assetlinks.json`; проверено на эмуляторе приложением-самозванцем (`SteamAppHandoffInstrumentedTest`) | Низкий |
 | S | Подмена CM-сервера | T5 | WebSocket поверх TLS с системным trust store; канальное шифрование CM на TCP (RSA-обмен ключами из JavaSteam с захардкоженным публичным ключом Steam); `cleartextTrafficPermitted=false`, user CA не доверяются | Низкий |
 | S | Чужой аккаунт после логина (неверный токен) | T7 | Проверка `sub` JWT == `LoggedOnCallback.clientSteamID`; при смене аккаунта — полная очистка старых данных (нет implicit account switching) | Низкий |
 | **T**ampering | Подмена ciphertext vault / перенос записи между слотами | T4 | AES-GCM tag + AAD = `"idlegamer.vault" | formatVersion | keyAlias | recordPurpose` | Низкий |
