@@ -92,6 +92,8 @@ dependencies {
 
     implementation(libs.javasteam)
     implementation(libs.bouncycastle.bcprov)
+    // JavaSteam declares protobuf-java as runtime-only; its generated message types are part of the API we call.
+    implementation(libs.protobuf.java)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.zxing.core)
     implementation(libs.coil.compose)

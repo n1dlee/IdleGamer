@@ -1,0 +1,235 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "f9c8e181ae20f48c4a76947b423b2f8d",
+    "entities": [
+      {
+        "tableName": "games",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`app_id` INTEGER NOT NULL, `name` TEXT NOT NULL, `icon_hash` TEXT, `playtime_forever_min` INTEGER, `playtime_2weeks_min` INTEGER, `last_played_epoch_s` INTEGER, `is_manual` INTEGER NOT NULL, `last_updated_ms` INTEGER NOT NULL, PRIMARY KEY(`app_id`))",
+        "fields": [
+          {
+            "fieldPath": "appId",
+            "columnName": "app_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "iconHash",
+            "columnName": "icon_hash",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "playtimeForeverMinutes",
+            "columnName": "playtime_forever_min",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "playtimeTwoWeeksMinutes",
+            "columnName": "playtime_2weeks_min",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastPlayedEpochSeconds",
+            "columnName": "last_played_epoch_s",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "isManual",
+            "columnName": "is_manual",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastUpdatedEpochMillis",
+            "columnName": "last_updated_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "app_id"
+          ]
+        }
+      },
+      {
+        "tableName": "selected_games",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`app_id` INTEGER NOT NULL, `selected_at_ms` INTEGER NOT NULL, PRIMARY KEY(`app_id`))",
+        "fields": [
+          {
+            "fieldPath": "appId",
+            "columnName": "app_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "selectedAtEpochMillis",
+            "columnName": "selected_at_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "app_id"
+          ]
+        }
+      },
+      {
+        "tableName": "activity_sessions",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `app_ids` TEXT NOT NULL, `started_at_ms` INTEGER NOT NULL, `ended_at_ms` INTEGER, `active_ms` INTEGER NOT NULL, `last_checkpoint_ms` INTEGER, `end_reason` TEXT)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "appIds",
+            "columnName": "app_ids",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startedAtEpochMillis",
+            "columnName": "started_at_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endedAtEpochMillis",
+            "columnName": "ended_at_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "activeMillis",
+            "columnName": "active_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastCheckpointEpochMillis",
+            "columnName": "last_checkpoint_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "endReason",
+            "columnName": "end_reason",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_activity_sessions_started_at_ms",
+            "unique": false,
+            "columnNames": [
+              "started_at_ms"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_activity_sessions_started_at_ms` ON `${TABLE_NAME}` (`started_at_ms`)"
+          },
+          {
+            "name": "index_activity_sessions_ended_at_ms",
+            "unique": false,
+            "columnNames": [
+              "ended_at_ms"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_activity_sessions_ended_at_ms` ON `${TABLE_NAME}` (`ended_at_ms`)"
+          }
+        ]
+      },
+      {
+        "tableName": "event_log",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `timestamp_ms` INTEGER NOT NULL, `type` TEXT NOT NULL, `message` TEXT NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timestampEpochMillis",
+            "columnName": "timestamp_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "type",
+            "columnName": "type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "message",
+            "columnName": "message",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_event_log_timestamp_ms",
+            "unique": false,
+            "columnNames": [
+              "timestamp_ms"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_event_log_timestamp_ms` ON `${TABLE_NAME}` (`timestamp_ms`)"
+          }
+        ]
+      },
+      {
+        "tableName": "sync_meta",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`key` TEXT NOT NULL, `value` INTEGER NOT NULL, PRIMARY KEY(`key`))",
+        "fields": [
+          {
+            "fieldPath": "key",
+            "columnName": "key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "value",
+            "columnName": "value",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "key"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'f9c8e181ae20f48c4a76947b423b2f8d')"
+    ]
+  }
+}
