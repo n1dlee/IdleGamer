@@ -7,14 +7,11 @@
     <string name="action_stop">Stop</string>
     <string name="action_start">Start</string>
     <string name="action_cancel">Cancel</string>
-    <string name="action_retry">Retry</string>
     <string name="action_close">Close</string>
     <string name="action_confirm">Confirm</string>
-    <string name="action_refresh">Refresh</string>
     <string name="action_add">Add</string>
     <string name="action_remove">Remove</string>
     <string name="action_back">Back</string>
-    <string name="unknown">Unknown</string>
 
     <!-- Splash / lock -->
     <string name="splash_loading">Checking local session…</string>
@@ -146,7 +143,6 @@
     <!-- Activity details -->
     <string name="details_title">Activity details</string>
     <string name="details_started">Local session started %1$s ago</string>
-    <string name="details_local_duration">Live presence time (local, monotonic clock): %1$s</string>
     <string name="details_network">Network: %1$s</string>
     <string name="details_online">online</string>
     <string name="details_offline">offline</string>

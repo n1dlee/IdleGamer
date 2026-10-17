@@ -84,11 +84,10 @@ dependencies {
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
     implementation(libs.compose.ui.graphics)
-    implementation(libs.compose.ui.tooling.preview)
     implementation(libs.compose.material3)
     implementation(libs.compose.material.icons.extended)
-    debugImplementation(libs.compose.ui.tooling)
-    debugImplementation(libs.compose.ui.test.manifest)
+    // ui-tooling and ui-test-manifest are intentionally absent: both inject *exported* debug activities
+    // (PreviewActivity / ComponentActivity). Tests use createAndroidComposeRule<MainActivity>() instead.
 
     implementation(libs.javasteam)
     implementation(libs.bouncycastle.bcprov)

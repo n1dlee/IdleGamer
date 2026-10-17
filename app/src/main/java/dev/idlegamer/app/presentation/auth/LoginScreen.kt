@@ -1,7 +1,7 @@
 package dev.idlegamer.app.presentation.auth
 
-import android.app.Activity
 import android.view.WindowManager
+import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -27,7 +27,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
@@ -151,7 +150,7 @@ private fun QrPanel(state: AuthState.WaitingForApproval, deviceName: String, onN
 /** FLAG_SECURE while a live QR is shown: no screenshots, screen recording or Recents thumbnail (R21). */
 @Composable
 private fun SecureWindow(enabled: Boolean) {
-    val activity = LocalContext.current as? Activity ?: return
+    val activity = LocalActivity.current ?: return
     DisposableEffect(enabled) {
         if (enabled) activity.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         onDispose { activity.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) }
