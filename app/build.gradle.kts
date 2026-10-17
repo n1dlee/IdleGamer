@@ -1,8 +1,19 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
     alias(libs.plugins.room)
+}
+
+// Release signing material lives OUTSIDE the repository: ~/.idlegamer-signing/keystore.properties (or the path in
+// IDLEGAMER_SIGNING_PROPERTIES). Without it the release APK is built unsigned, which is what CI does.
+val signingProperties = Properties().apply {
+    val path = System.getenv("IDLEGAMER_SIGNING_PROPERTIES")
+        ?: "${System.getProperty("user.home")}/.idlegamer-signing/keystore.properties"
+    val file = File(path)
+    if (file.isFile) file.inputStream().use(::load)
 }
 
 android {
@@ -19,6 +30,17 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (signingProperties.getProperty("storeFile") != null) {
+            create("release") {
+                storeFile = File(signingProperties.getProperty("storeFile"))
+                storePassword = signingProperties.getProperty("storePassword")
+                keyAlias = signingProperties.getProperty("keyAlias")
+                keyPassword = signingProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
@@ -31,7 +53,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
-            // Intentionally no signingConfig: release signing keys are never stored in this repo.
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 

@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## 0.1.0 — 2026-10-17 (первая версия, не опубликована)
+## 0.1.0 — 2026-10-17 (первый публичный релиз)
 
 ### Добавлено
 * Исследование (RESEARCH, STEAM_PROTOCOL, FEASIBILITY, COMPLIANCE, ANDROID_LIMITATIONS, DEPENDENCIES), risk register, STRIDE threat model.
@@ -12,7 +12,8 @@
 * Foreground service `specialUse` со Stop в уведомлении, опциональный wake lock с таймаутом, auto-stop.
 * UI: вход, Dashboard, библиотека (поиск, сортировка, фильтры, list/grid, pull-to-refresh, ручной App ID), детали, история, настройки, лицензии, UI-lock.
 * Журнал событий с редактированием секретов, экспорт диагностики.
-* 95 JVM- и 18 instrumented-тестов, secret scan, CI.
+* 112 JVM- и 17 instrumented-тестов, secret scan, CI.
+* Release-APK подписан собственным ключом (вне репозитория); подпись в Gradle подключается только при наличии `~/.idlegamer-signing/keystore.properties`.
 
 ### После проверки на реальном телефоне
 * **Вход по логину и паролю с подтверждением push-запросом в Steam Mobile** (решение владельца): официальный `BeginAuthSessionViaCredentials`, пароль RSA-шифруется ключом Steam, не хранится и стирается из памяти; запасной ввод кода Steam Guard / e-mail-кода; QR остаётся для второго устройства.

@@ -10,7 +10,7 @@
 
 ## Статус
 
-Версия 0.1.0. Собирается, 95 unit- и 18 instrumented-тестов проходят, получение QR от Steam проверено на
+Версия 0.1.0. Собирается, 112 unit- и 17 instrumented-тестов проходят, получение QR от Steam проверено на
 эмуляторе (debug и release). Установлено и запускается на реальном Samsung (Android 17); QR-вход требует второго устройства. **Логон, библиотека, presence и отзыв токена ещё не проверены на реальном
 аккаунте** — см. [FEASIBILITY](docs/FEASIBILITY.md) и [TEST_PLAN §5](docs/TEST_PLAN.md).
 
@@ -28,13 +28,20 @@
 
 APK: `app/build/outputs/apk/debug/app-debug.apk` (applicationId `dev.idlegamer.app.debug`).
 
-Release (минифицированный, **неподписанный** — подписывайте своим ключом, ключи в репозиторий не кладутся):
+Release (минифицированный). Подписывается, если есть `~/.idlegamer-signing/keystore.properties` (или путь в
+`IDLEGAMER_SIGNING_PROPERTIES`); иначе собирается неподписанным. Ключи в репозиторий не кладутся:
 
 ```bash
 ./gradlew :app:assembleRelease
 ```
 
 ## Установка
+
+Готовый APK — в [Releases](https://github.com/n1dlee/IdleGamer/releases): скачайте `IdleGamer-<версия>.apk`, сверьте SHA-256
+с файлом `.sha256` рядом и установите (разрешите установку из этого источника). Release-APK подписан ключом автора;
+отпечаток сертификата SHA-256: `58:ED:54:93:6D:4F:3E:89:6B:0B:CE:0E:DD:CC:21:11:8E:63:98:CF:86:35:0C:4C:08:11:10:5D:E1:1A:67:1A`.
+
+Из исходников:
 
 ```bash
 adb install -r app/build/outputs/apk/debug/app-debug.apk
@@ -100,5 +107,6 @@ bash scripts/secret-scan.sh app/build/outputs/apk/debug/app-debug.apk
 
 JavaSteam (MIT), Bouncy Castle (MIT-style), protobuf-java (BSD-3), AndroidX/Kotlin/OkHttp/Ktor/Coil/ZXing/
 commons-lang3 (Apache-2.0). Код GPL-3.0 проекта UpdogFarmer не копировался. Список — в приложении
-(Settings → Open-source licenses) и в [DEPENDENCIES](docs/DEPENDENCIES.md). Лицензия самого проекта не выбрана
-(персональный проект, не распространяется).
+(Settings → Open-source licenses) и в [DEPENDENCIES](docs/DEPENDENCIES.md).
+
+Лицензия самого проекта пока не выбрана: исходный код опубликован для ознакомления, все права защищены.
