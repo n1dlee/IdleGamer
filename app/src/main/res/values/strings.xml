@@ -21,8 +21,28 @@
     <string name="lock_prompt_subtitle">Confirm it is you</string>
 
     <!-- Login -->
-    <string name="login_description">Sign in by scanning a QR code with the official Steam Mobile app on another device (a second phone or tablet). IdleGamer never asks for your password or Steam Guard codes.</string>
+    <string name="login_description">Sign in with your Steam account name and password, then approve the request in the Steam Mobile app on this phone.</string>
     <string name="login_sign_in">Sign in with Steam</string>
+    <string name="login_account_name">Steam account name</string>
+    <string name="login_account_name_hint">The login name, not your profile (persona) name or e-mail.</string>
+    <string name="login_password">Password</string>
+    <string name="login_show_password">Show password</string>
+    <string name="login_hide_password">Hide password</string>
+    <string name="login_password_note">The password is encrypted with Steam\'s public key and sent only to Steam. IdleGamer never saves it; only the resulting session is kept, encrypted on this device.</string>
+    <string name="login_qr_alternative">Have Steam Mobile on another phone or tablet? You can sign in without typing a password.</string>
+    <string name="login_sign_in_qr">Sign in with a QR code instead</string>
+    <string name="guard_title">Steam Guard</string>
+    <string name="guard_push_instructions">Open the Steam Mobile app and approve the sign-in request for \"%1$s\". It usually arrives as a notification, or under the Steam Guard shield.</string>
+    <string name="guard_waiting">Waiting for approval… IdleGamer keeps checking while you are in the Steam app.</string>
+    <string name="guard_code_mobile">Enter the code shown in the Steam Mobile app (Steam Guard shield).</string>
+    <string name="guard_code_mobile_alternative">No request? Enter the code shown under the Steam Guard shield instead.</string>
+    <string name="guard_code_email">Enter the code Steam sent to your e-mail.</string>
+    <string name="guard_code_email_hint">Enter the code Steam sent to your e-mail at %1$s.</string>
+    <string name="guard_code_label">Steam Guard code</string>
+    <string name="guard_code_rejected">That code was not accepted. Check it and try again.</string>
+    <string name="guard_submit">Submit code</string>
+    <string name="error_approval_expired">The sign-in was not approved in time. Sign in again.</string>
+    <string name="error_wrong_credentials">Incorrect account name or password.</string>
     <string name="login_new_code">Get a new code</string>
     <string name="login_initializing">Contacting Steam…</string>
     <string name="login_second_device_required">Steam only accepts this code from the camera scanner in the Steam Mobile app, so it cannot be approved on the phone that shows it. Use Steam Mobile signed in to your account on another phone or tablet.</string>

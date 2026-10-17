@@ -95,7 +95,9 @@ fun steamErrorText(error: SteamError): String = when (error) {
 
 @Composable
 fun authErrorText(error: AuthError): String = when (error) {
+    AuthError.WrongCredentials -> stringResource(R.string.error_wrong_credentials)
     AuthError.QrExpired -> stringResource(R.string.error_qr_expired)
+    AuthError.ApprovalExpired -> stringResource(R.string.error_approval_expired)
     AuthError.PollingLimitReached -> stringResource(R.string.error_polling_limit)
     AuthError.StorageFailure -> stringResource(R.string.error_storage)
     is AuthError.Steam -> steamErrorText(error.error)

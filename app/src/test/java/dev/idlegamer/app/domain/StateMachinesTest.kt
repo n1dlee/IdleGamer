@@ -9,6 +9,7 @@ import dev.idlegamer.app.domain.model.AuthState
 import dev.idlegamer.app.domain.model.AuthStateMachine
 import dev.idlegamer.app.domain.model.ConnectionState
 import dev.idlegamer.app.domain.model.ConnectionStateMachine
+import dev.idlegamer.app.domain.model.GuardCodeKind
 import dev.idlegamer.app.domain.model.ReauthReason
 import dev.idlegamer.app.domain.model.RemotePresence
 import dev.idlegamer.app.domain.model.SteamError
@@ -46,17 +47,17 @@ class AuthStateMachineTest {
 
     @Test fun `happy QR path`() {
         var s: AuthState = AuthState.LoggedOut
-        s = reduce(s, AuthEvent.QrLoginRequested); assertEquals(AuthState.Initializing, s)
+        s = reduce(s, AuthEvent.LoginRequested); assertEquals(AuthState.Initializing, s)
         s = reduce(s, AuthEvent.QrChallengeIssued("a", 10)); assertEquals(AuthState.WaitingForApproval("a", 10), s)
         s = reduce(s, AuthEvent.QrChallengeRefreshed("b", 10)); assertEquals(AuthState.WaitingForApproval("b", 10), s)
-        s = reduce(s, AuthEvent.QrApproved); assertEquals(AuthState.Authenticating, s)
+        s = reduce(s, AuthEvent.LoginApproved); assertEquals(AuthState.Authenticating, s)
         s = reduce(s, AuthEvent.LoginSucceeded(identity)); assertEquals(AuthState.Authenticated(identity), s)
     }
 
     @Test fun `login can be requested from every signed-out state but not while authenticated`() {
-        listOf(AuthState.LoggedOut, reauth, failed, waiting).forEach { assertEquals(AuthState.Initializing, reduce(it, AuthEvent.QrLoginRequested)) }
+        listOf(AuthState.LoggedOut, reauth, failed, waiting).forEach { assertEquals(AuthState.Initializing, reduce(it, AuthEvent.LoginRequested)) }
         listOf(AuthState.Authenticated(identity), AuthState.Authenticating, AuthState.Unknown).forEach {
-            assertEquals(it, reduce(it, AuthEvent.QrLoginRequested))
+            assertEquals(it, reduce(it, AuthEvent.LoginRequested))
         }
     }
 
@@ -71,10 +72,42 @@ class AuthStateMachineTest {
     }
 
     @Test fun `out of order events are ignored`() {
-        assertEquals(AuthState.LoggedOut, reduce(AuthState.LoggedOut, AuthEvent.QrApproved))
+        assertEquals(AuthState.LoggedOut, reduce(AuthState.LoggedOut, AuthEvent.LoginApproved))
         assertEquals(AuthState.LoggedOut, reduce(AuthState.LoggedOut, AuthEvent.QrChallengeIssued("x", 1)))
         assertEquals(AuthState.Initializing, reduce(AuthState.Initializing, AuthEvent.LoginSucceeded(identity)))
         assertEquals(waiting, reduce(waiting, AuthEvent.LoginSucceeded(identity)))
+    }
+
+    @Test fun `steam guard path`() {
+        var s: AuthState = AuthState.LoggedOut
+        s = reduce(s, AuthEvent.LoginRequested); assertEquals(AuthState.Initializing, s)
+        s = reduce(s, AuthEvent.SteamGuardRequired(true, GuardCodeKind.MOBILE_APP, null, 99))
+        assertEquals(AuthState.AwaitingSteamGuard(true, GuardCodeKind.MOBILE_APP, null, 99), s)
+        s = reduce(s, AuthEvent.GuardCodeSubmitted); assertTrue((s as AuthState.AwaitingSteamGuard).submittingCode)
+        s = reduce(s, AuthEvent.GuardCodeRejected)
+        assertTrue((s as AuthState.AwaitingSteamGuard).codeRejected && !s.submittingCode)
+        s = reduce(s, AuthEvent.GuardCodeSubmitted); assertFalse((s as AuthState.AwaitingSteamGuard).codeRejected)
+        s = reduce(s, AuthEvent.GuardCodeAccepted); assertFalse((s as AuthState.AwaitingSteamGuard).submittingCode)
+        s = reduce(s, AuthEvent.LoginApproved); assertEquals(AuthState.Authenticating, s)
+    }
+
+    @Test fun `account without steam guard is approved straight from initializing`() {
+        assertEquals(AuthState.Authenticating, reduce(AuthState.Initializing, AuthEvent.LoginApproved))
+        assertEquals(AuthState.LoggedOut, reduce(AuthState.LoggedOut, AuthEvent.LoginApproved))
+    }
+
+    @Test fun `steam guard can be cancelled failed or restarted`() {
+        val g = AuthState.AwaitingSteamGuard(true, null, null, 1)
+        assertEquals(AuthState.LoggedOut, reduce(g, AuthEvent.LoginCancelled))
+        assertEquals(AuthState.Failed(AuthError.ApprovalExpired), reduce(g, AuthEvent.LoginFailed(AuthError.ApprovalExpired)))
+        assertEquals(AuthState.Initializing, reduce(g, AuthEvent.LoginRequested))
+    }
+
+    @Test fun `code events need a code-capable steam guard state`() {
+        val pushOnly = AuthState.AwaitingSteamGuard(true, null, null, 1)
+        assertEquals(pushOnly, reduce(pushOnly, AuthEvent.GuardCodeSubmitted))
+        assertEquals(AuthState.LoggedOut, reduce(AuthState.LoggedOut, AuthEvent.GuardCodeRejected))
+        assertEquals(AuthState.LoggedOut, reduce(AuthState.LoggedOut, AuthEvent.SteamGuardRequired(true, null, null, 1)))
     }
 
     @Test fun `session rejection only from authenticated`() {

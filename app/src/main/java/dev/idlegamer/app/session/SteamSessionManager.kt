@@ -5,10 +5,13 @@ import dev.idlegamer.app.core.logging.AppLogger
 import dev.idlegamer.app.core.network.NetworkMonitor
 import dev.idlegamer.app.core.security.JwtClaims
 import dev.idlegamer.app.core.time.Clock
+import dev.idlegamer.app.data.steam.CodeSubmission
 import dev.idlegamer.app.data.steam.DisconnectReason
+import dev.idlegamer.app.data.steam.GuardConfirmation
 import dev.idlegamer.app.data.steam.GatewayStatus
 import dev.idlegamer.app.data.steam.LogOnResult
-import dev.idlegamer.app.data.steam.QrPollResult
+import dev.idlegamer.app.data.steam.PendingAuthSession
+import dev.idlegamer.app.data.steam.PollResult
 import dev.idlegamer.app.data.steam.SteamEvent
 import dev.idlegamer.app.data.steam.SteamGateway
 import dev.idlegamer.app.domain.model.AccountIdentity
@@ -18,6 +21,7 @@ import dev.idlegamer.app.domain.model.AuthState
 import dev.idlegamer.app.domain.model.AuthStateMachine
 import dev.idlegamer.app.domain.model.ConnectionState
 import dev.idlegamer.app.domain.model.ConnectionStateMachine
+import dev.idlegamer.app.domain.model.GuardCodeKind
 import dev.idlegamer.app.domain.model.ReauthReason
 import dev.idlegamer.app.domain.model.SessionCredentials
 import dev.idlegamer.app.domain.model.SteamError
@@ -31,6 +35,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -69,7 +74,7 @@ class SteamSessionManager(
     /** Called after a successful QR login, before credentials are saved (clears data of a previous account). */
     private val onAccountSignedIn: suspend (SteamId) -> Unit,
     private val policy: ReconnectPolicy = ReconnectPolicy(),
-    private val qrLifetimeMillis: Long = 5 * 60_000,
+    private val loginLifetimeMillis: Long = 5 * 60_000,
     private val uiReleaseGraceMillis: Long = 30_000,
 ) {
     enum class Demand { UI, ACTIVITY }
@@ -121,13 +126,39 @@ class SteamSessionManager(
         startSupervisor()
     }
 
-    fun startQrLogin() {
-        loginJob?.cancel()
-        loginJob = scope.launch { opMutex.withLock { runQrLogin() } }
+    fun startQrLogin() = launchLogin(LoginMethod.Qr)
+
+    /**
+     * Account name + password, confirmed by Steam Guard (push approval in Steam Mobile, or a typed code).
+     * [password] is copied, the caller's array is wiped immediately, and the copy is wiped right after Steam
+     * received the RSA-encrypted form. It is never stored or logged.
+     */
+    fun startCredentialsLogin(accountName: String, password: CharArray) {
+        val copy = password.copyOf()
+        password.fill('\u0000')
+        launchLogin(LoginMethod.Credentials(accountName.trim(), copy))
     }
 
-    fun cancelQrLogin() {
+    /** A Steam Guard code typed by the user for the current credentials login. Ignored otherwise. */
+    fun submitGuardCode(code: String) {
+        val normalized = code.trim().uppercase()
+        if (normalized.isEmpty() || normalized.length > 12) return
+        guardCodes?.trySend(normalized)
+    }
+
+    fun cancelLogin() {
         loginJob?.cancel()
+    }
+
+    private fun launchLogin(method: LoginMethod) {
+        loginJob?.cancel()
+        loginJob = scope.launch {
+            try {
+                opMutex.withLock { runLogin(method) }
+            } finally {
+                (method as? LoginMethod.Credentials)?.password?.fill('\u0000')
+            }
+        }
     }
 
     /** Ask for a live session. The connection loop runs while at least one demand is held. */
@@ -205,75 +236,38 @@ class SteamSessionManager(
 
     // endregion
 
-    // region QR login
+    // region login (QR and credentials)
 
-    private suspend fun runQrLogin() {
-        dispatch(AuthEvent.QrLoginRequested)
+    private sealed interface LoginMethod {
+        data object Qr : LoginMethod
+        class Credentials(val accountName: String, val password: CharArray) : LoginMethod {
+            override fun toString(): String = "Credentials(***)"
+        }
+    }
+
+    @Volatile private var guardCodes: Channel<String>? = null
+
+    private suspend fun runLogin(method: LoginMethod) {
+        dispatch(AuthEvent.LoginRequested)
         if (_auth.value != AuthState.Initializing) return
-        logger.event(AppEvent.AUTH_INITIATED, "qr")
+        logger.event(AppEvent.AUTH_INITIATED, if (method is LoginMethod.Qr) "qr" else "credentials")
         var completed = false
         try {
             if (!network.isOnline.value) throw LoginFailure(AuthError.Steam(SteamError.NetworkUnavailable))
+            if (method is LoginMethod.Credentials && (method.accountName.isEmpty() || method.password.isEmpty())) {
+                throw LoginFailure(AuthError.WrongCredentials)
+            }
             // Coming from AuthExpired / Failed of a previous session: start the lifecycle over.
             setConnection(ConnectionState.Disconnected, force = true)
             setConnection(ConnectionState.Connecting)
             gateway.connect()
             setConnection(ConnectionState.Connected)
 
-            val qr = gateway.beginQrLogin(deviceFriendlyName)
-            val deadline = clock.elapsedRealtimeMillis() + qrLifetimeMillis
-            dispatch(AuthEvent.QrChallengeIssued(qr.challengeUrl.value, deadline))
-            val urlWatcher = scope.launch {
-                qr.challengeUrl.drop(1).collect { dispatch(AuthEvent.QrChallengeRefreshed(it, deadline)) }
+            val approved = when (method) {
+                LoginMethod.Qr -> qrPhase()
+                is LoginMethod.Credentials -> credentialsPhase(method)
             }
-            val approved = try {
-                val maxPolls = (qrLifetimeMillis / qr.pollIntervalMillis).toInt() + 1
-                var polls = 0
-                var result: QrPollResult.Approved? = null
-                while (result == null) {
-                    delay(qr.pollIntervalMillis)
-                    if (clock.elapsedRealtimeMillis() >= deadline) throw LoginFailure(AuthError.QrExpired)
-                    if (++polls > maxPolls) throw LoginFailure(AuthError.PollingLimitReached)
-                    when (val poll = qr.poll()) {
-                        QrPollResult.Pending -> Unit
-                        is QrPollResult.Approved -> result = poll
-                        QrPollResult.Expired -> throw LoginFailure(AuthError.QrExpired)
-                        is QrPollResult.Failed -> throw LoginFailure(AuthError.Steam(poll.error))
-                    }
-                }
-                result
-            } finally {
-                urlWatcher.cancel()
-            }
-
-            dispatch(AuthEvent.QrApproved)
-            setConnection(ConnectionState.Authenticating)
-            val steamId = when (val logOn = gateway.logOn(approved.accountName, approved.refreshToken, loginId())) {
-                is LogOnResult.Failure -> throw LoginFailure(AuthError.Steam(logOn.error))
-                is LogOnResult.Success -> logOn.steamId
-            }
-            val claims = JwtClaims.parse(approved.refreshToken)
-            if (claims?.subject != null && claims.subject != steamId) {
-                runCatching { gateway.logOff() }
-                throw LoginFailure(AuthError.Steam(SteamError.IdentityMismatch))
-            }
-            if (claims == null) logger.warn(TAG, "refresh token payload unreadable; identity checked via logon only")
-
-            onAccountSignedIn(steamId)
-            val creds = SessionCredentials(steamId, approved.accountName, approved.refreshToken, clock.currentTimeMillis())
-            try {
-                credentialStore.save(creds)
-            } catch (e: CredentialStoreException) {
-                logger.event(AppEvent.STORAGE_FAILURE, "vault save failed: ${e.kind}")
-                runCatching { gateway.logOff() }
-                throw LoginFailure(AuthError.StorageFailure)
-            }
-            credentials = creds
-            _profile.value = UserProfile(steamId, personaName = null, avatarUrl = null)
-            setConnection(ConnectionState.Authenticated(steamId, clock.elapsedRealtimeMillis()))
-            dispatch(AuthEvent.LoginSucceeded(AccountIdentity(steamId)))
-            logger.event(AppEvent.AUTH_SUCCEEDED, "account ${steamId.masked()}")
-            runCatching { gateway.requestPersona(steamId) }
+            finishLogin(approved)
             completed = true
         } catch (e: CancellationException) {
             dispatch(AuthEvent.LoginCancelled)
@@ -286,6 +280,8 @@ class SteamSessionManager(
             dispatch(AuthEvent.LoginFailed(AuthError.Steam(e.error)))
             logger.event(AppEvent.AUTH_FAILED, describe(AuthError.Steam(e.error)))
         } finally {
+            guardCodes?.close()
+            guardCodes = null
             if (!completed) {
                 withContext(NonCancellable) {
                     runCatching { gateway.disconnect() }
@@ -293,6 +289,113 @@ class SteamSessionManager(
                 }
             }
         }
+    }
+
+    private suspend fun qrPhase(): PollResult.Approved {
+        val qr = gateway.beginQrLogin(deviceFriendlyName)
+        val deadline = clock.elapsedRealtimeMillis() + loginLifetimeMillis
+        dispatch(AuthEvent.QrChallengeIssued(qr.challengeUrl.value, deadline))
+        val urlWatcher = scope.launch {
+            qr.challengeUrl.drop(1).collect { dispatch(AuthEvent.QrChallengeRefreshed(it, deadline)) }
+        }
+        try {
+            return pollUntilApproved(qr, deadline, AuthError.QrExpired)
+        } finally {
+            urlWatcher.cancel()
+        }
+    }
+
+    private suspend fun credentialsPhase(method: LoginMethod.Credentials): PollResult.Approved {
+        val session = try {
+            gateway.beginCredentialsLogin(method.accountName, method.password, deviceFriendlyName)
+        } catch (e: SteamException) {
+            throw LoginFailure(if (e.error is SteamError.InvalidCredentials) AuthError.WrongCredentials else AuthError.Steam(e.error))
+        } finally {
+            // Steam has the RSA-encrypted form (or the attempt failed): the plaintext is no longer needed.
+            method.password.fill('\u0000')
+        }
+        val deadline = clock.elapsedRealtimeMillis() + loginLifetimeMillis
+        val confirmations = session.confirmations
+        if (GuardConfirmation.NONE !in confirmations) {
+            val codeKind = when {
+                GuardConfirmation.MOBILE_APP_CODE in confirmations -> GuardCodeKind.MOBILE_APP
+                GuardConfirmation.EMAIL_CODE in confirmations -> GuardCodeKind.EMAIL
+                else -> null
+            }
+            val mobileApproval = GuardConfirmation.MOBILE_APP_APPROVAL in confirmations
+            if (!mobileApproval && codeKind == null) throw LoginFailure(AuthError.Steam(SteamError.Unsupported("Steam Guard method")))
+            dispatch(AuthEvent.SteamGuardRequired(mobileApproval, codeKind, session.emailHint, deadline))
+            val channel = Channel<String>(Channel.CONFLATED).also { guardCodes = it }
+            val codeJob = scope.launch {
+                for (code in channel) {
+                    val kind = if (codeKind == GuardCodeKind.EMAIL) GuardConfirmation.EMAIL_CODE else GuardConfirmation.MOBILE_APP_CODE
+                    dispatch(AuthEvent.GuardCodeSubmitted)
+                    when (val result = session.submitCode(code, kind)) {
+                        CodeSubmission.Accepted -> dispatch(AuthEvent.GuardCodeAccepted)
+                        CodeSubmission.Rejected -> dispatch(AuthEvent.GuardCodeRejected)
+                        is CodeSubmission.Failed -> {
+                            logger.event(AppEvent.AUTH_FAILED, "guard code submission: ${describe(result.error)}")
+                            dispatch(AuthEvent.GuardCodeRejected)
+                        }
+                    }
+                }
+            }
+            try {
+                return pollUntilApproved(session, deadline, AuthError.ApprovalExpired)
+            } finally {
+                codeJob.cancel()
+            }
+        }
+        return pollUntilApproved(session, deadline, AuthError.ApprovalExpired)
+    }
+
+    /** Polls at Steam's interval (seconds), bounded by [deadline] and a maximum number of polls (R12, R20). */
+    private suspend fun pollUntilApproved(session: PendingAuthSession, deadline: Long, expired: AuthError): PollResult.Approved {
+        val maxPolls = (loginLifetimeMillis / session.pollIntervalMillis).toInt() + 1
+        var polls = 0
+        while (true) {
+            delay(session.pollIntervalMillis)
+            if (clock.elapsedRealtimeMillis() >= deadline) throw LoginFailure(expired)
+            if (++polls > maxPolls) throw LoginFailure(AuthError.PollingLimitReached)
+            when (val poll = session.poll()) {
+                PollResult.Pending -> Unit
+                is PollResult.Approved -> return poll
+                PollResult.Expired -> throw LoginFailure(expired)
+                is PollResult.Failed -> throw LoginFailure(AuthError.Steam(poll.error))
+            }
+        }
+    }
+
+    /** Logon with the new refresh token, identity check, account-switch cleanup, and only then persistence. */
+    private suspend fun finishLogin(approved: PollResult.Approved) {
+        dispatch(AuthEvent.LoginApproved)
+        setConnection(ConnectionState.Authenticating)
+        val steamId = when (val logOn = gateway.logOn(approved.accountName, approved.refreshToken, loginId())) {
+            is LogOnResult.Failure -> throw LoginFailure(AuthError.Steam(logOn.error))
+            is LogOnResult.Success -> logOn.steamId
+        }
+        val claims = JwtClaims.parse(approved.refreshToken)
+        if (claims?.subject != null && claims.subject != steamId) {
+            runCatching { gateway.logOff() }
+            throw LoginFailure(AuthError.Steam(SteamError.IdentityMismatch))
+        }
+        if (claims == null) logger.warn(TAG, "refresh token payload unreadable; identity checked via logon only")
+
+        onAccountSignedIn(steamId)
+        val creds = SessionCredentials(steamId, approved.accountName, approved.refreshToken, clock.currentTimeMillis())
+        try {
+            credentialStore.save(creds)
+        } catch (e: CredentialStoreException) {
+            logger.event(AppEvent.STORAGE_FAILURE, "vault save failed: ${e.kind}")
+            runCatching { gateway.logOff() }
+            throw LoginFailure(AuthError.StorageFailure)
+        }
+        credentials = creds
+        _profile.value = UserProfile(steamId, personaName = null, avatarUrl = null)
+        setConnection(ConnectionState.Authenticated(steamId, clock.elapsedRealtimeMillis()))
+        dispatch(AuthEvent.LoginSucceeded(AccountIdentity(steamId)))
+        logger.event(AppEvent.AUTH_SUCCEEDED, "account ${steamId.masked()}")
+        runCatching { gateway.requestPersona(steamId) }
     }
 
     private class LoginFailure(val error: AuthError) : Exception()

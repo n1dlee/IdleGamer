@@ -42,12 +42,15 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ## Авторизация
 
-1. Sign in with Steam.
-2. На **другом** телефоне/планшете с Steam Mobile вашего аккаунта: щит Steam Guard → «Scan a QR code» → отсканируйте QR с экрана IdleGamer (скриншоты этого экрана заблокированы).
-   На том же телефоне одобрить QR нельзя: Steam принимает его только со сканера камеры (проверено на устройстве).
+1. Введите имя аккаунта Steam (логин, не ник) и пароль → «Sign in with Steam».
+2. В Steam Mobile на этом же телефоне подтвердите запрос входа для «IdleGamer (<ваше устройство>)». Если запрос не пришёл — введите код из Steam Guard (или из e-mail).
+3. Пароль уходит только в Steam (RSA-шифрование ключом Steam) и нигде не сохраняется; хранится лишь полученный токен сессии.
+
+Без пароля: «Sign in with a QR code instead» и сканирование Steam Mobile на **другом** устройстве (на том же телефоне QR
+одобрить нельзя — проверено).
 3. IdleGamer проверяет, что Steam вошёл именно в аккаунт токена, и только потом сохраняет сессию.
 
-Пароль и коды Steam Guard никогда не вводятся в IdleGamer. Подробно: [AUTHENTICATION](docs/AUTHENTICATION.md).
+Подробно и почему не WebView/сервер: [AUTHENTICATION](docs/AUTHENTICATION.md).
 
 ## Использование
 

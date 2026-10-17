@@ -21,6 +21,19 @@ sealed interface AuthState {
         override fun toString(): String = "WaitingForApproval(challengeUrl=***, expiresAt=$expiresAtElapsedMillis)"
     }
 
+    /**
+     * Credentials were accepted; Steam Guard must confirm the sign-in. Either the user approves the push request in
+     * Steam Mobile ([mobileApproval]) or types a code ([codeKind]). Nothing secret is held in this state.
+     */
+    data class AwaitingSteamGuard(
+        val mobileApproval: Boolean,
+        val codeKind: GuardCodeKind?,
+        val emailHint: String?,
+        val expiresAtElapsedMillis: Long,
+        val codeRejected: Boolean = false,
+        val submittingCode: Boolean = false,
+    ) : AuthState
+
     /** Approved in the Steam app; logging on and verifying the identity before persisting anything. */
     data object Authenticating : AuthState
 
@@ -42,8 +55,15 @@ enum class ReauthReason {
     SessionRevoked,
 }
 
+enum class GuardCodeKind { MOBILE_APP, EMAIL }
+
 sealed interface AuthError {
+    /** BeginAuthSessionViaCredentials rejected the account name or password. */
+    data object WrongCredentials : AuthError
     data object QrExpired : AuthError
+
+    /** The Steam Guard confirmation of a credentials login was not given in time. */
+    data object ApprovalExpired : AuthError
     data object PollingLimitReached : AuthError
     data class Steam(val error: SteamError) : AuthError
     data object StorageFailure : AuthError
@@ -53,14 +73,23 @@ sealed interface AuthEvent {
     data class StoredCredentialsFound(val identity: AccountIdentity) : AuthEvent
     data object NoStoredCredentials : AuthEvent
     data object StoredCredentialsUnreadable : AuthEvent
-    data object QrLoginRequested : AuthEvent
+    data object LoginRequested : AuthEvent
     data class QrChallengeIssued(val challengeUrl: String, val expiresAtElapsedMillis: Long) : AuthEvent {
         override fun toString(): String = "QrChallengeIssued(***)"
     }
     data class QrChallengeRefreshed(val challengeUrl: String, val expiresAtElapsedMillis: Long) : AuthEvent {
         override fun toString(): String = "QrChallengeRefreshed(***)"
     }
-    data object QrApproved : AuthEvent
+    data class SteamGuardRequired(
+        val mobileApproval: Boolean,
+        val codeKind: GuardCodeKind?,
+        val emailHint: String?,
+        val expiresAtElapsedMillis: Long,
+    ) : AuthEvent
+    data object GuardCodeSubmitted : AuthEvent
+    data object GuardCodeRejected : AuthEvent
+    data object GuardCodeAccepted : AuthEvent
+    data object LoginApproved : AuthEvent
     data class LoginSucceeded(val identity: AccountIdentity) : AuthEvent
     data class LoginFailed(val error: AuthError) : AuthEvent
     data object LoginCancelled : AuthEvent
@@ -88,13 +117,13 @@ object AuthStateMachine {
                 state
             }
 
-        AuthEvent.QrLoginRequested -> when (state) {
+        AuthEvent.LoginRequested -> when (state) {
             AuthState.LoggedOut,
             is AuthState.ReauthenticationRequired,
             is AuthState.Failed,
             -> AuthState.Initializing
-            // Restarting an in-progress QR flow is allowed (expired / user pressed "new code").
-            is AuthState.WaitingForApproval -> AuthState.Initializing
+            // Restarting an in-progress flow is allowed (expired / "new code" / switching method).
+            is AuthState.WaitingForApproval, is AuthState.AwaitingSteamGuard -> AuthState.Initializing
             else -> state
         }
 
@@ -112,20 +141,45 @@ object AuthStateMachine {
                 state
             }
 
-        AuthEvent.QrApproved ->
-            if (state is AuthState.WaitingForApproval) AuthState.Authenticating else state
+        is AuthEvent.SteamGuardRequired ->
+            if (state is AuthState.Initializing) {
+                AuthState.AwaitingSteamGuard(event.mobileApproval, event.codeKind, event.emailHint, event.expiresAtElapsedMillis)
+            } else {
+                state
+            }
+
+        AuthEvent.GuardCodeSubmitted ->
+            if (state is AuthState.AwaitingSteamGuard && state.codeKind != null) {
+                state.copy(submittingCode = true, codeRejected = false)
+            } else {
+                state
+            }
+
+        AuthEvent.GuardCodeRejected ->
+            if (state is AuthState.AwaitingSteamGuard) state.copy(submittingCode = false, codeRejected = true) else state
+
+        AuthEvent.GuardCodeAccepted ->
+            if (state is AuthState.AwaitingSteamGuard) state.copy(submittingCode = false) else state
+
+        AuthEvent.LoginApproved ->
+            // Initializing: a credentials login for an account without Steam Guard is approved without a prompt.
+            if (state is AuthState.Initializing || state is AuthState.WaitingForApproval || state is AuthState.AwaitingSteamGuard) {
+                AuthState.Authenticating
+            } else {
+                state
+            }
 
         is AuthEvent.LoginSucceeded ->
             if (state is AuthState.Authenticating) AuthState.Authenticated(event.identity) else state
 
         is AuthEvent.LoginFailed -> when (state) {
-            AuthState.Initializing, is AuthState.WaitingForApproval, AuthState.Authenticating ->
+            AuthState.Initializing, is AuthState.WaitingForApproval, is AuthState.AwaitingSteamGuard, AuthState.Authenticating ->
                 AuthState.Failed(event.error)
             else -> state
         }
 
         AuthEvent.LoginCancelled -> when (state) {
-            AuthState.Initializing, is AuthState.WaitingForApproval, AuthState.Authenticating ->
+            AuthState.Initializing, is AuthState.WaitingForApproval, is AuthState.AwaitingSteamGuard, AuthState.Authenticating ->
                 AuthState.LoggedOut
             else -> state
         }
@@ -138,5 +192,6 @@ object AuthStateMachine {
 
     fun isValidTransition(state: AuthState, event: AuthEvent): Boolean =
         event == AuthEvent.LoggedOut || reduce(state, event) != state ||
-            (event is AuthEvent.QrChallengeRefreshed && state is AuthState.WaitingForApproval)
+            (event is AuthEvent.QrChallengeRefreshed && state is AuthState.WaitingForApproval) ||
+            (event == AuthEvent.GuardCodeAccepted && state is AuthState.AwaitingSteamGuard)
 }

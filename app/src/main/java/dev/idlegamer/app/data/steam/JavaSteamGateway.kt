@@ -16,7 +16,10 @@ import `in`.dragonbra.javasteam.protobufs.steamclient.SteammessagesClientserver.
 import `in`.dragonbra.javasteam.protobufs.steamclient.SteammessagesPlayerSteamclient.CPlayer_GetOwnedGames_Request
 import `in`.dragonbra.javasteam.rpc.service.Authentication
 import `in`.dragonbra.javasteam.rpc.service.Player
+import `in`.dragonbra.javasteam.protobufs.steamclient.SteammessagesAuthSteamclient.EAuthSessionGuardType
+import `in`.dragonbra.javasteam.steam.authentication.AuthSession
 import `in`.dragonbra.javasteam.steam.authentication.AuthSessionDetails
+import `in`.dragonbra.javasteam.steam.authentication.CredentialsAuthSession
 import `in`.dragonbra.javasteam.steam.authentication.AuthenticationException
 import `in`.dragonbra.javasteam.steam.authentication.IChallengeUrlChanged
 import `in`.dragonbra.javasteam.steam.authentication.QrAuthSession
@@ -203,36 +206,109 @@ class JavaSteamGateway(
         return JavaSteamQrSession(qr)
     }
 
+    override suspend fun beginCredentialsLogin(
+        accountName: String,
+        password: CharArray,
+        deviceFriendlyName: String,
+    ): CredentialsLoginSession {
+        requireTransport()
+        val details = AuthSessionDetails().apply {
+            this.username = accountName
+            // JavaSteam's API takes a String; it is RSA-encrypted with Steam's key inside beginAuthSessionViaCredentials
+            // and the reference is dropped in `finally`. JVM strings cannot be wiped (SESSION_LIFECYCLE.md §9).
+            this.password = String(password)
+            this.deviceFriendlyName = deviceFriendlyName
+            this.platformType = EAuthTokenPlatformType.k_EAuthTokenPlatformType_SteamClient
+            this.persistentSession = true
+            this.websiteID = "Client"
+            // No IAuthenticator: Steam Guard is handled by IdleGamer's own UI, never automatically.
+            this.authenticator = null
+        }
+        val session: CredentialsAuthSession = try {
+            withTimeout(REQUEST_TIMEOUT_MS) { client.authentication.beginAuthSessionViaCredentials(details).await() }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw SteamException(mapAuthFailure(e), e)
+        } finally {
+            details.password = null
+        }
+        return JavaSteamCredentialsSession(session)
+    }
+
     private inner class JavaSteamQrSession(private val qr: QrAuthSession) : QrLoginSession {
         private val url = MutableStateFlow(qr.challengeUrl)
         override val challengeUrl: StateFlow<String> = url.asStateFlow()
-
-        // `interval` is in seconds (SteamKit: TimeSpan.FromSeconds). JavaSteam's own polling loop treats it as
-        // milliseconds, which is why we never call pollingWaitForResult() (RESEARCH.md §2.3).
-        override val pollIntervalMillis: Long = (qr.pollingInterval * 1000f).toLong().coerceIn(1_000L, 30_000L)
+        override val pollIntervalMillis: Long = pollIntervalOf(qr)
 
         init {
             qr.challengeUrlChanged = IChallengeUrlChanged { session -> session?.challengeUrl?.let { url.value = it } }
         }
 
-        override suspend fun poll(): QrPollResult {
-            if (_status.value is GatewayStatus.Disconnected) return QrPollResult.Failed(SteamError.ConnectionReset)
+        override suspend fun poll(): PollResult = pollOnce(qr)
+    }
+
+    private inner class JavaSteamCredentialsSession(private val session: CredentialsAuthSession) : CredentialsLoginSession {
+        override val pollIntervalMillis: Long = pollIntervalOf(session)
+
+        override val confirmations: Set<GuardConfirmation> = session.allowedConfirmations.mapNotNull {
+            when (it.confirmationType) {
+                EAuthSessionGuardType.k_EAuthSessionGuardType_None -> GuardConfirmation.NONE
+                EAuthSessionGuardType.k_EAuthSessionGuardType_DeviceConfirmation -> GuardConfirmation.MOBILE_APP_APPROVAL
+                EAuthSessionGuardType.k_EAuthSessionGuardType_DeviceCode -> GuardConfirmation.MOBILE_APP_CODE
+                EAuthSessionGuardType.k_EAuthSessionGuardType_EmailCode -> GuardConfirmation.EMAIL_CODE
+                // EmailConfirmation / MachineToken / Unknown: not offered by Steam for client logins in practice.
+                else -> null
+            }
+        }.toSet()
+
+        override val emailHint: String? = session.allowedConfirmations
+            .firstOrNull { it.confirmationType == EAuthSessionGuardType.k_EAuthSessionGuardType_EmailCode }
+            ?.associatedMessage?.takeIf { it.isNotBlank() }?.take(100)
+
+        override suspend fun poll(): PollResult = pollOnce(session)
+
+        override suspend fun submitCode(code: String, kind: GuardConfirmation): CodeSubmission {
+            val type = when (kind) {
+                GuardConfirmation.MOBILE_APP_CODE -> EAuthSessionGuardType.k_EAuthSessionGuardType_DeviceCode
+                GuardConfirmation.EMAIL_CODE -> EAuthSessionGuardType.k_EAuthSessionGuardType_EmailCode
+                else -> return CodeSubmission.Failed(SteamError.Unsupported("code for $kind"))
+            }
             return try {
-                val result = withTimeout(REQUEST_TIMEOUT_MS) { qr.pollAuthSessionStatus().await() }
-                when {
-                    result == null -> QrPollResult.Pending
-                    result.refreshToken.isNullOrEmpty() || result.accountName.isNullOrEmpty() ->
-                        QrPollResult.Failed(SteamError.ProtocolIncompatible("poll result without token"))
-                    else -> QrPollResult.Approved(result.accountName, Secret(result.refreshToken))
-                }
+                withTimeout(REQUEST_TIMEOUT_MS) { session.sendSteamGuardCode(code, type).await() }
+                CodeSubmission.Accepted
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                val auth = unwrap(e) as? AuthenticationException
-                when (auth?.result) {
-                    EResult.Expired, EResult.FileNotFound -> QrPollResult.Expired
-                    else -> QrPollResult.Failed(mapAuthFailure(e))
+                when ((unwrap(e) as? AuthenticationException)?.result) {
+                    EResult.InvalidLoginAuthCode, EResult.TwoFactorCodeMismatch -> CodeSubmission.Rejected
+                    else -> CodeSubmission.Failed(mapAuthFailure(e))
                 }
+            }
+        }
+    }
+
+    // `interval` is in seconds (SteamKit: TimeSpan.FromSeconds). JavaSteam's own polling loop treats it as
+    // milliseconds, which is why we never call pollingWaitForResult() (RESEARCH.md §2.3).
+    private fun pollIntervalOf(session: AuthSession): Long = (session.pollingInterval * 1000f).toLong().coerceIn(1_000L, 30_000L)
+
+    private suspend fun pollOnce(session: AuthSession): PollResult {
+        if (_status.value is GatewayStatus.Disconnected) return PollResult.Failed(SteamError.ConnectionReset)
+        return try {
+            val result = withTimeout(REQUEST_TIMEOUT_MS) { session.pollAuthSessionStatus().await() }
+            when {
+                result == null -> PollResult.Pending
+                result.refreshToken.isNullOrEmpty() || result.accountName.isNullOrEmpty() ->
+                    PollResult.Failed(SteamError.ProtocolIncompatible("poll result without token"))
+                else -> PollResult.Approved(result.accountName, Secret(result.refreshToken))
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            val auth = unwrap(e) as? AuthenticationException
+            when (auth?.result) {
+                EResult.Expired, EResult.FileNotFound -> PollResult.Expired
+                else -> PollResult.Failed(mapAuthFailure(e))
             }
         }
     }

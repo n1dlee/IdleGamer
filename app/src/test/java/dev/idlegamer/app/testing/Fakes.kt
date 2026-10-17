@@ -8,12 +8,15 @@ import dev.idlegamer.app.core.security.CredentialCipher
 import dev.idlegamer.app.core.security.EncryptedPayload
 import dev.idlegamer.app.core.security.Secret
 import dev.idlegamer.app.core.time.Clock
+import dev.idlegamer.app.data.steam.CodeSubmission
+import dev.idlegamer.app.data.steam.CredentialsLoginSession
 import dev.idlegamer.app.data.steam.DisconnectReason
+import dev.idlegamer.app.data.steam.GuardConfirmation
 import dev.idlegamer.app.data.steam.GatewayStatus
 import dev.idlegamer.app.data.steam.LogOnResult
 import dev.idlegamer.app.data.steam.OwnedGame
 import dev.idlegamer.app.data.steam.QrLoginSession
-import dev.idlegamer.app.data.steam.QrPollResult
+import dev.idlegamer.app.data.steam.PollResult
 import dev.idlegamer.app.data.steam.SteamEvent
 import dev.idlegamer.app.data.steam.SteamGateway
 import dev.idlegamer.app.domain.model.ActivitySessionRecord
@@ -144,7 +147,7 @@ class FakeSteamGateway : SteamGateway {
     var connectFailures: ArrayDeque<SteamError> = ArrayDeque()
     var logOnResults: ArrayDeque<LogOnResult> = ArrayDeque()
     var defaultLogOn: LogOnResult = LogOnResult.Success(TEST_STEAM_ID)
-    var qrPolls: ArrayDeque<QrPollResult> = ArrayDeque()
+    var qrPolls: ArrayDeque<PollResult> = ArrayDeque()
     var qrIntervalMillis = 5_000L
     var ownedGames: List<OwnedGame> = emptyList()
     var revokeAnswer = true
@@ -181,13 +184,51 @@ class FakeSteamGateway : SteamGateway {
         return object : QrLoginSession {
             override val challengeUrl: StateFlow<String> = url
             override val pollIntervalMillis: Long = qrIntervalMillis
-            override suspend fun poll(): QrPollResult {
+            override suspend fun poll(): PollResult {
                 qrPollCalls++
                 qrPollTimes += timeSource()
-                return qrPolls.removeFirstOrNull() ?: QrPollResult.Pending
+                return qrPolls.removeFirstOrNull() ?: PollResult.Pending
             }
         }
     }
+
+    // region credentials login (scriptable)
+
+    var credentialsBeginError: SteamError? = null
+    var credentialConfirmations: Set<GuardConfirmation> = setOf(GuardConfirmation.MOBILE_APP_APPROVAL, GuardConfirmation.MOBILE_APP_CODE)
+    var credentialsEmailHint: String? = null
+    /** Polls returned in order; after they run out: Pending, or Approved once a correct code was submitted. */
+    var credentialPolls: ArrayDeque<PollResult> = ArrayDeque()
+    var correctCode = "ABCDE"
+    var approvalOnCorrectCode: PollResult.Approved? = null
+    val passwordsSeenAtBegin = mutableListOf<String>()
+    var passwordArrayGiven: CharArray? = null
+    val submittedCodes = mutableListOf<Pair<String, GuardConfirmation>>()
+    var credentialPollCalls = 0
+
+    override suspend fun beginCredentialsLogin(accountName: String, password: CharArray, deviceFriendlyName: String): CredentialsLoginSession {
+        if (_status.value !is GatewayStatus.Connected) throw SteamException(SteamError.ConnectionReset)
+        passwordArrayGiven = password
+        passwordsSeenAtBegin += String(password)
+        credentialsBeginError?.let { throw SteamException(it) }
+        var codeAccepted = false
+        return object : CredentialsLoginSession {
+            override val confirmations: Set<GuardConfirmation> = credentialConfirmations
+            override val emailHint: String? = credentialsEmailHint
+            override val pollIntervalMillis: Long = qrIntervalMillis
+            override suspend fun poll(): PollResult {
+                credentialPollCalls++
+                credentialPolls.removeFirstOrNull()?.let { return it }
+                return if (codeAccepted) approvalOnCorrectCode ?: PollResult.Pending else PollResult.Pending
+            }
+            override suspend fun submitCode(code: String, kind: GuardConfirmation): CodeSubmission {
+                submittedCodes += code to kind
+                return if (code == correctCode) CodeSubmission.Accepted.also { codeAccepted = true } else CodeSubmission.Rejected
+            }
+        }
+    }
+
+    // endregion
 
     override suspend fun logOn(accountName: String, refreshToken: Secret, loginId: Int): LogOnResult {
         logOnCalls++

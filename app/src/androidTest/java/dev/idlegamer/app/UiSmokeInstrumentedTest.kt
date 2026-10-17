@@ -11,8 +11,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Smoke test on a fresh install: no stored session, so the login screen must appear, the risk notice must be
- * visible, and the window must not be FLAG_SECURE until a QR code is actually shown.
+ * Smoke test on a fresh install: no stored session, so the login screen (password form) must appear with the risk
+ * notice, and the window must be FLAG_SECURE because it contains a password field.
  */
 @RunWith(AndroidJUnit4::class)
 class UiSmokeInstrumentedTest {
@@ -25,6 +25,7 @@ class UiSmokeInstrumentedTest {
         compose.onNodeWithText("Sign in with Steam").assertIsDisplayed()
         compose.onNodeWithText("Before you sign in").assertIsDisplayed()
         val flags = compose.activity.window.attributes.flags
-        assertEquals(0, flags and WindowManager.LayoutParams.FLAG_SECURE)
+        compose.onNodeWithText("Sign in with a QR code instead").assertExists()
+        assertEquals(WindowManager.LayoutParams.FLAG_SECURE, flags and WindowManager.LayoutParams.FLAG_SECURE)
     }
 }

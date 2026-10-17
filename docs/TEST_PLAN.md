@@ -4,7 +4,7 @@
 
 | Набор | Команда | Где | Результат |
 |---|---|---|---|
-| JVM unit (95 тестов, 14 классов) | `./gradlew :app:testDebugUnitTest` | JDK 21 | **95/95 pass** |
+| JVM unit (112 тестов, 15 классов) | `./gradlew :app:testDebugUnitTest` | JDK 21 | **112/112 pass** |
 | Instrumented (18 тестов) | `./gradlew :app:connectedDebugAndroidTest` | эмулятор Android 16 (API 36, x86_64) | **17 pass + 1 skipped (opt-in)**. Примечание: AGP пишет пропуск через `assumeTrue` в XML как `failures=1` с `AssumptionViolatedException`; Gradle считает его пропуском, сборка успешна |
 | Steam CM transport (opt-in) | `... -Pandroid.testInstrumentationRunnerArguments.steamNetwork=true` | эмулятор + реальный Steam CM | **pass** (connect/disconnect без аккаунта) |
 | Lint | `./gradlew :app:lintDebug` | | 0 errors; предупреждения: OldTargetApi (осознанно), protobuf newer (закреплено), 2× PluralsCandidate |
@@ -17,6 +17,7 @@
 * **Vault:** round-trip; отсутствие токена/аккаунта в ciphertext; 500 шифрований — 500 уникальных IV; инверсия **каждого** байта → отказ; перенос на другой SteamID/alias → отказ; усечение/мусор/неизвестная версия; удалённый и пересозданный ключ; файловое хранилище: corrupted, key lost, атомарная перезапись, `clear()` уничтожает ключ.
 * **Логи:** Redactor (JWT, QR URL, key=value, Bearer, blobs, SteamID), `toString()` секретов, отсутствие токена во всех строках логгера за полный цикл login→logout.
 * **Session manager:** QR happy path; интервал опроса ≥ 5 с (≤ 12 опросов/мин); истечение QR и срока жизни; чужой аккаунт; ошибка vault; отмена; второй логин отменяет первый; offline; восстановление сессии; невалидный токен — один логон и стоп; Revoked; reconnect после обрыва; ожидание сети без попыток; смена сети сокращает backoff; give-up и ручной retry; rate limit ≥ 10 мин; grace-период UI; продление токена; logout (revoke, удаление, без reconnect); offline-logout; отказ Steam в revoke.
+* **Вход по паролю (`CredentialsLoginTest`, 13):** push-одобрение и сохранение только токена; обнуление обоих `CharArray`; неверный пароль без повторов; троттлинг; пустой ввод не связывается со Steam; неверный код → исправление; e-mail-код с подсказкой; аккаунт без Steam Guard; неизвестный метод; отмена; интервал опроса и истечение; коды вне входа игнорируются; пароль и код не попадают в логи.
 * **Activity engine:** валидация (пусто, >32, 0, >2^24-1, нет согласия, не вошёл); точная длительность по монотонным часам; идемпотентный stop; время не идёт во время reconnect и при `PlayingBlocked`; потеря auth → `AUTH_LOST`; ошибка presence не скрывается; эхо persona; checkpoint раз в минуту; восстановление `INTERRUPTED`; 20 конкурентных start/stop; переключение игр; auto-stop.
 * **Mapping:** коды EResult → постоянные/временные ошибки; исключения → сетевые ошибки.
 
@@ -36,6 +37,7 @@ UI smoke (экран входа, предупреждение, нет `FLAG_SECU
 | M2 | Release (R8, локально подписан debug-ключом только для установки): то же | ✅ QR получен, падений нет |
 | M3 | logcat за M1/M2: `s.team/q`, `eyJ…` | ✅ 0 совпадений |
 | D1 | **Реальный телефон** SM-S938B, Android 17: установка debug, запуск | ✅ без падений; targetSdk 36 в режиме совместимости |
+| D3 | D1: новая сборка — экран входа с формой логина/пароля, без падений | ✅ |
 | D2 | D1: передача QR-ссылки в Steam Mobile (удалённая функция) | ❌ Steam открылся без запроса одобрения («scan the Steam QR code again»); функция удалена |
 | M4 | Ресурсы release в покое | PSS ≈ 56 МБ, CPU 0 %, сервис не запущен |
 
@@ -56,6 +58,7 @@ UI smoke (экран входа, предупреждение, нет `FLAG_SECU
 | A11 | Battery restricted | Настройки → Батарея → Ограничено | возможная остановка — `SYSTEM_STOPPED`/`INTERRUPTED` |
 | A12 | Reboot | перезагрузка | ничего не стартует само; запись `INTERRUPTED` |
 | A13 | FGS timeout (тестовый) | `adb shell am compat enable FGS_INTRODUCE_TIME_LIMITS <pkg>` | specialUse не ограничен; onTimeout реализован |
+| A15 | **Вход по паролю на одном телефоне** (тестовый аккаунт): имя аккаунта + пароль → push в Steam Mobile → Approve → Dashboard. Повторить с вводом кода вместо push | вход завершается; в logcat нет пароля/кода; после перезапуска сессия восстанавливается без пароля |
 | P1 | Батарея | `adb shell dumpsys batterystats --reset`, 1 ч сессии, `dumpsys batterystats <pkg>` | зафиксировать |
 
 ## 4. Security-проверки (сводка)
@@ -78,7 +81,7 @@ UI smoke (экран входа, предупреждение, нет `FLAG_SECU
 
 Только **тестовый аккаунт без ценных предметов**. Claude не запрашивает пароль, коды или токены.
 
-1. Read-only: Sign in (QR сканируется Steam Mobile на **втором** устройстве) → Dashboard: имя, «Online». Library → Refresh: игры и playtime совпадают со Steam. Logout → сообщение о revoke. Проверить в Steam список устройств.
+1. Read-only: Sign in (логин + пароль + Approve в Steam Mobile, A15; или QR со второго устройства) → Dashboard: имя, «Online». Library → Refresh: игры и playtime совпадают со Steam. Logout → сообщение о revoke. Проверить в Steam список устройств.
 2. Перезапуск приложения после входа → сессия восстанавливается без QR.
 3. Только после п.1–2 и прочтения COMPLIANCE.md: одна игра, Start на 10 мин, Stop; через несколько часов «Verify playtime». Записать, изменился ли `playtime_forever`.
 4. Отправить экспорт диагностики (Settings → Export) для разбора, если что-то пошло не так.

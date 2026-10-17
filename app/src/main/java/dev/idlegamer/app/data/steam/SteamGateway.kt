@@ -26,6 +26,13 @@ interface SteamGateway {
     /** Requires a connected transport. */
     suspend fun beginQrLogin(deviceFriendlyName: String): QrLoginSession
 
+    /**
+     * IAuthenticationService.BeginAuthSessionViaCredentials. The password is RSA-encrypted with Steam's public key
+     * inside the library before it is sent. Implementations must not retain [password] after this call returns;
+     * the caller wipes the array afterwards.
+     */
+    suspend fun beginCredentialsLogin(accountName: String, password: CharArray, deviceFriendlyName: String): CredentialsLoginSession
+
     /** Logs on with a refresh token. Returns Steam's verdict; never retries by itself. */
     suspend fun logOn(accountName: String, refreshToken: Secret, loginId: Int): LogOnResult
 
@@ -86,23 +93,56 @@ data class OwnedGame(
     val lastPlayedEpochSeconds: Long,
 )
 
-/** A live QR auth session. Cancelling the owning coroutine abandons it. */
-interface QrLoginSession {
-    /** Current challenge URL; Steam may rotate it while polling. Never log it. */
-    val challengeUrl: StateFlow<String>
-
+/** A pending Steam auth session (QR or credentials). Cancelling the owning coroutine abandons it. */
+interface PendingAuthSession {
     /** Interval Steam asked us to poll at. */
     val pollIntervalMillis: Long
 
     /** One poll. Does not loop and does not sleep. */
-    suspend fun poll(): QrPollResult
+    suspend fun poll(): PollResult
 }
 
-sealed interface QrPollResult {
-    data object Pending : QrPollResult
-    data class Approved(val accountName: String, val refreshToken: Secret) : QrPollResult {
+interface QrLoginSession : PendingAuthSession {
+    /** Current challenge URL; Steam may rotate it while polling. Never log it. */
+    val challengeUrl: StateFlow<String>
+}
+
+/** Ways Steam allows this sign-in to be confirmed (EAuthSessionGuardType). */
+enum class GuardConfirmation {
+    /** No Steam Guard: approved as soon as the credentials are accepted. */
+    NONE,
+
+    /** "Approve sign-in" push in the Steam Mobile app — works on the same phone. */
+    MOBILE_APP_APPROVAL,
+
+    /** 5-character code from the Steam Guard mobile authenticator, typed by the user. */
+    MOBILE_APP_CODE,
+
+    /** Code sent to the account's e-mail address, typed by the user. */
+    EMAIL_CODE,
+}
+
+interface CredentialsLoginSession : PendingAuthSession {
+    val confirmations: Set<GuardConfirmation>
+
+    /** Masked e-mail domain Steam reports for [GuardConfirmation.EMAIL_CODE], if any. */
+    val emailHint: String?
+
+    /** Sends a code the user typed. Never log [code]. */
+    suspend fun submitCode(code: String, kind: GuardConfirmation): CodeSubmission
+}
+
+sealed interface CodeSubmission {
+    data object Accepted : CodeSubmission
+    data object Rejected : CodeSubmission
+    data class Failed(val error: SteamError) : CodeSubmission
+}
+
+sealed interface PollResult {
+    data object Pending : PollResult
+    data class Approved(val accountName: String, val refreshToken: Secret) : PollResult {
         override fun toString(): String = "Approved(***)"
     }
-    data object Expired : QrPollResult
-    data class Failed(val error: SteamError) : QrPollResult
+    data object Expired : PollResult
+    data class Failed(val error: SteamError) : PollResult
 }

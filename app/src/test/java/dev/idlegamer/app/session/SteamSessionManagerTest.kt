@@ -1,7 +1,7 @@
 package dev.idlegamer.app.session
 
 import dev.idlegamer.app.data.steam.LogOnResult
-import dev.idlegamer.app.data.steam.QrPollResult
+import dev.idlegamer.app.data.steam.PollResult
 import dev.idlegamer.app.domain.model.AuthError
 import dev.idlegamer.app.domain.model.AuthState
 import dev.idlegamer.app.domain.model.ConnectionState
@@ -80,7 +80,7 @@ class SteamSessionManagerTest {
     // region QR login
 
     @Test fun `qr login happy path stores credentials only after verified logon`() = runTest {
-        gateway.qrPolls = ArrayDeque(listOf(QrPollResult.Pending, QrPollResult.Pending, QrPollResult.Approved("acc", fakeJwt(TEST_STEAM_ID))))
+        gateway.qrPolls = ArrayDeque(listOf(PollResult.Pending, PollResult.Pending, PollResult.Approved("acc", fakeJwt(TEST_STEAM_ID))))
         val m = manager()
         m.initialize()
         m.startQrLogin()
@@ -106,11 +106,11 @@ class SteamSessionManagerTest {
         runCurrent()
         assertTrue("polled ${gateway.qrPollCalls} times in 60s", gateway.qrPollCalls in 11..12)
         gateway.qrPollTimes.zipWithNext().forEach { (a, b) -> assertTrue(b - a >= 5_000) }
-        m.cancelQrLogin()
+        m.cancelLogin()
     }
 
     @Test fun `expired qr fails and disconnects`() = runTest {
-        gateway.qrPolls = ArrayDeque(listOf(QrPollResult.Pending, QrPollResult.Expired))
+        gateway.qrPolls = ArrayDeque(listOf(PollResult.Pending, PollResult.Expired))
         val m = manager()
         m.initialize()
         m.startQrLogin()
@@ -131,7 +131,7 @@ class SteamSessionManagerTest {
     }
 
     @Test fun `token for another account is rejected`() = runTest {
-        gateway.qrPolls = ArrayDeque(listOf(QrPollResult.Approved("acc", fakeJwt(OTHER_STEAM_ID))))
+        gateway.qrPolls = ArrayDeque(listOf(PollResult.Approved("acc", fakeJwt(OTHER_STEAM_ID))))
         val m = manager()
         m.initialize()
         m.startQrLogin()
@@ -143,7 +143,7 @@ class SteamSessionManagerTest {
     }
 
     @Test fun `vault failure aborts login without keeping a session`() = runTest {
-        gateway.qrPolls = ArrayDeque(listOf(QrPollResult.Approved("acc", fakeJwt(TEST_STEAM_ID))))
+        gateway.qrPolls = ArrayDeque(listOf(PollResult.Approved("acc", fakeJwt(TEST_STEAM_ID))))
         store.failSaveWith = CredentialStoreException.Kind.IO
         val m = manager()
         m.initialize()
@@ -159,7 +159,7 @@ class SteamSessionManagerTest {
         m.initialize()
         m.startQrLogin()
         runCurrent()
-        m.cancelQrLogin()
+        m.cancelLogin()
         runCurrent()
         assertEquals(AuthState.LoggedOut, m.authState.value)
         assertEquals(ConnectionState.Disconnected, m.connectionState.value)
@@ -177,7 +177,7 @@ class SteamSessionManagerTest {
         runCurrent()
         // Only one poll loop is alive.
         assertEquals(1, gateway.qrPollCalls)
-        m.cancelQrLogin()
+        m.cancelLogin()
     }
 
     @Test fun `offline login fails fast`() = runTest {
@@ -387,7 +387,7 @@ class SteamSessionManagerTest {
     // endregion
 
     @Test fun `logs never contain the refresh token`() = runTest {
-        gateway.qrPolls = ArrayDeque(listOf(QrPollResult.Approved("acc", fakeJwt(TEST_STEAM_ID))))
+        gateway.qrPolls = ArrayDeque(listOf(PollResult.Approved("acc", fakeJwt(TEST_STEAM_ID))))
         val m = manager()
         m.initialize()
         m.startQrLogin()

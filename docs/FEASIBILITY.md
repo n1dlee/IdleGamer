@@ -21,7 +21,8 @@
 | Нет backup / device transfer | ✅ | `backupIsDisabled` + правила `data_extraction_rules.xml` |
 | Foreground service `specialUse` + Stop | 🟡 | Манифест проверен тестом; запуск сессии требует аккаунта |
 | Restore после process death без фантомных часов | ✅ (логика) | `ActivityEngineTest`, `DatabaseInstrumentedTest.openSessionsAreClosedAsInterruptedAtTheirCheckpoint` |
-| Парольный вход / ввод Steam Guard кодов | ⛔ | По требованию: QR-only, пароль не запрашивается и не хранится |
+| Вход по логину/паролю + push в Steam Mobile | 🟡 | Решение владельца 2026-10-17. Реализовано через `beginAuthSessionViaCredentials`; на реальном аккаунте — ожидает проверки владельцем (TEST_PLAN A15) |
+| Ввод кода Steam Guard пользователем | 🟡 | Запасной вариант к push; код не хранится |
 | Shared secret / автогенерация 2FA-кодов | ⛔ | Обход 2FA, запрещено |
 | Автопереключение игр по карточкам, парсинг badges | ⛔ | Требует веб-сессии и автоматизации наград (SSA §4.C); не входит в scope |
 | Трейды, маркет, инвентарь | ⛔ | Запрещено требованиями |

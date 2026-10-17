@@ -1,6 +1,47 @@
 # AUTHENTICATION
 
-## Метод: Steam QR login (единственный)
+## Основной метод: логин + пароль + подтверждение в Steam Mobile
+
+Решение владельца от 2026-10-17 (после проверки на устройстве: QR нельзя одобрить на том же телефоне).
+Это тот же официальный поток `IAuthenticationService`, которым входит десктопный клиент Steam.
+
+### Последовательность (`SteamSessionManager.runLogin` → `credentialsPhase`)
+
+1. Форма: имя аккаунта и пароль. Поля хранятся в `remember` (не `rememberSaveable`: не попадают в saved instance
+   state), окно `FLAG_SECURE`, клавиатура `Password` без автокоррекции, подсказки автозаполнения для менеджеров паролей.
+2. По нажатию пароль передаётся как `CharArray`; массив вызывающей стороны обнуляется сразу, поле очищается.
+3. `connect()` → `beginAuthSessionViaCredentials`: JavaSteam запрашивает у Steam RSA-ключ аккаунта
+   (`GetPasswordRSAPublicKey`) и отправляет **только зашифрованный** пароль. Сразу после этого внутренняя копия
+   обнуляется. Ссылка на `String`, которую требует API JavaSteam, отпускается в `finally` (JVM-строку нельзя затереть).
+4. Неверный пароль (`InvalidPassword`) → `Failed(WrongCredentials)` без повторов; троттлинг Steam (`AccountLoginDeniedThrottle`) показывается как есть.
+5. Steam сообщает допустимые способы подтверждения → `AwaitingSteamGuard`:
+   * **push «Approve sign-in» в Steam Mobile** (`DeviceConfirmation`) — работает на том же телефоне;
+   * ввод кода из Steam Guard (`DeviceCode`) — запасной вариант, если push не пришёл;
+   * код из e-mail (`EmailCode`) — с подсказкой домена от Steam;
+   * без Steam Guard — сразу к опросу.
+   Код вводит **пользователь**; IdleGamer не генерирует коды и не подтверждает ничего сам (`IAuthenticator` не используется).
+6. Опрос `pollAuthSessionStatus` — тот же ограниченный цикл, что для QR (интервал Steam, ≤ 5 мин, лимит опросов);
+   истечение → `ApprovalExpired`.
+7. Дальше общий путь `finishLogin`: логон по refresh token, проверка JWT `sub` == SteamID, смена аккаунта, сохранение в vault.
+
+### Безопасность пароля
+
+| Где | Что происходит |
+|---|---|
+| UI | `String` в памяти composable до нажатия, затем поле очищается; не сохраняется в Bundle/диск, экран не скриншотится |
+| Session manager | копия `CharArray` обнуляется после отправки и в `finally` джоба входа |
+| JavaSteam | `AuthSessionDetails.password` (String) → RSA-шифрование ключом Steam → `null` |
+| Сеть | только RSA-шифротекст внутри TLS WebSocket |
+| Диск / логи / журнал / диагностика | никогда (тест `logs never contain the password or the code`) |
+| Остаточный риск | неуничтожимые JVM-строки до сборки мусора; на rooted-устройстве память процесса читаема; клавиатура (IME) видит ввод — используйте доверенную клавиатуру |
+
+Пароль не используется повторно: при истечении сессии нужен новый вход.
+
+`newGuardData` (запоминание устройства для e-mail Steam Guard) не сохраняется → аккаунты с e-mail-кодом вводят код при каждом входе.
+
+## Запасной метод: QR со второго устройства
+
+## QR login
 
 ### Одобрение на том же телефоне — невозможно (проверено на устройстве)
 
@@ -12,8 +53,8 @@ Steam явным intent (основание: App Links `s.team` → `com.valveso
 (защита от фишинга). Кроме того, системный WindowManager Samsung записал полный intent со ссылкой в logcat.
 Функция удалена. QR-вход требует второго устройства с Steam Mobile.
 
-Пароль и коды Steam Guard **никогда** не вводятся в IdleGamer и не хранятся. Подтверждение выполняется в
-официальном приложении Steam Mobile — Steam Guard остаётся частью официальной процедуры.
+Для QR-входа пароль не нужен. Подтверждение в обоих методах выполняется в официальном приложении Steam Mobile —
+Steam Guard остаётся частью официальной процедуры.
 
 ### Последовательность (`SteamSessionManager.runQrLogin`)
 
@@ -55,7 +96,9 @@ Unknown ──StoredCredentialsFound──► Authenticated
    │ ──NoStoredCredentials──► LoggedOut
    └──StoredCredentialsUnreadable──► ReauthenticationRequired(LocalCredentialsUnavailable)
 
-LoggedOut / Failed / ReauthenticationRequired / WaitingForApproval ──QrLoginRequested──► Initializing
+LoggedOut / Failed / ReauthenticationRequired / WaitingForApproval / AwaitingSteamGuard ──LoginRequested──► Initializing
+Initializing ──SteamGuardRequired──► AwaitingSteamGuard ──GuardCode{Submitted,Rejected,Accepted}──► AwaitingSteamGuard
+AwaitingSteamGuard | Initializing (без Steam Guard) ──LoginApproved──► Authenticating
 Initializing ──QrChallengeIssued──► WaitingForApproval ──QrApproved──► Authenticating ──LoginSucceeded──► Authenticated
 Initializing | WaitingForApproval | Authenticating ──LoginFailed──► Failed(error)
 Initializing | WaitingForApproval | Authenticating ──LoginCancelled──► LoggedOut
@@ -65,8 +108,11 @@ Authenticated ──SessionRejected(reason)──► ReauthenticationRequired(re
 
 Все допустимые и недопустимые переходы — `AuthStateMachineTest`.
 
-## Почему не пароль / не WebView / не OpenID
+## Почему не WebView / не свой сервер / не OpenID
 
-* Пароль — лишний секрет и необходимость обрабатывать Steam Guard коды в приложении.
-* WebView OAuth для клиентской сессии не существует; имитировать его — запрещено.
-* OpenID не выдаёт токенов для CM (STEAM_PROTOCOL.md §1).
+* **WebView со страницей входа Steam** даёт веб-cookies (`steamLoginSecure`, аудитория `web`), а не refresh token
+  клиентской CM-сессии — presence с ним невозможен. Веб-вход тоже использует QR. Страница входа внутри чужого
+  приложения — фишинговый паттерн: приложение-хост может читать всё, что вводится, а пользователь не видит адрес.
+* **Собственный сервер-посредник** хранил бы пароль или токен вне устройства: один взлом сервера = компрометация
+  аккаунта; передача учётных данных третьей стороне противоречит SSA §1.C; нарушает принцип «no backend».
+* **OpenID** не выдаёт токенов для CM (STEAM_PROTOCOL.md §1).

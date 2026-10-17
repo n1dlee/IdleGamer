@@ -17,6 +17,7 @@
 
 | Данные | Хранилище | Защита |
 |---|---|---|
+| пароль Steam | только RAM на время отправки; RSA-шифрование ключом Steam | обнуление `CharArray`, FLAG_SECURE, не логируется, не сохраняется |
 | refresh token, account name | `noBackupFilesDir/vault/session.bin` | AES-256-GCM, ключ Keystore |
 | access token | не хранится | — |
 | QR challenge URL | только RAM + экран; в другие приложения не передаётся (системный WindowManager логирует intent) | FLAG_SECURE, Redactor |
